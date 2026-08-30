@@ -1,0 +1,10 @@
+const express=require("express");
+const router=express.Router();
+const {createEntry,getEntries,getAllTransaction,updateEntry,deleteEntry,updateTransaction}=require("../controller/entryController");
+router.post("/entry",createEntry);
+router.get("/entries/:type",getEntries);
+router.patch("/entry/:type/:id",updateEntry);
+router.delete("/entry/:type/:id",deleteEntry);
+router.get("/transaction",getAllTransaction);
+router.patch("/transaction/:id",updateTransaction);
+module.exports=router;

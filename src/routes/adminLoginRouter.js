@@ -1,0 +1,2 @@
+const express=require("express");const router=express.Router();const {adminLogin,getMe,logout,forgotPassword,resetPassword}=require("../controller/adminController");const authMiddleware=require("../midleware/authMiddleware");
+router.post("/login",adminLogin);router.get("/me",authMiddleware,getMe);router.post("/logout",authMiddleware,logout);router.post("/forgot-password",forgotPassword);router.post("/reset-password",resetPassword);module.exports=router;

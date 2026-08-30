@@ -1,0 +1,1 @@
+const express=require("express");const router=express.Router();const {createExpense,getExpense,updateExpense,deleteExpense}=require("../controller/expenseController");router.post("/add-expense",createExpense);router.get("/expense/:type",getExpense);router.patch("/expense/:id",updateExpense);router.delete("/expense/:id",deleteExpense);module.exports=router;
