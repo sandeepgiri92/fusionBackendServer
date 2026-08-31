@@ -17,7 +17,7 @@ const createEntry = async (req,res) => {
     const date = normalizeDate(entryData.date);
     const amount = Number(entryData.amount);
     if (!date || !Number.isFinite(amount) || amount < 0) return res.status(400).json({success:false,message:"Valid date and amount are required"});
-    const base = {partyId,date,amount};
+    const base = {partyId,date,amount,remarks:String(entryData.remarks || "").trim()};
     if (type === "Service") base.serviceDetail = String(entryData.serviceDetail || "").trim();
     else Object.assign(base,{productName:String(entryData.productName||"").trim(),invoiceNo:String(entryData.invoiceNo||"").trim(),serialNo:String(entryData.serialNo||"").trim()});
     if (type === "Service" && !base.serviceDetail) return res.status(400).json({success:false,message:"Service detail is required"});
@@ -38,7 +38,7 @@ const getEntries = async (req,res) => {
     const {partyId,page=1,searchValue,month,year} = req.query;
     if(!Model || !mongoose.isValidObjectId(partyId)) return res.status(400).json({success:false,message:"Valid party id is required"});
     const filter={partyId}; const search=String(searchValue||"").trim();
-    if(search){ const fields=Model.modelName === "Service" ? ["serviceDetail"] : ["invoiceNo","serialNo","productName"]; filter.$or=fields.map(f=>({[f]:{$regex:search,$options:"i"}})); }
+    if(search){ const fields=Model.modelName === "Service" ? ["serviceDetail","remarks"] : ["invoiceNo","serialNo","productName","remarks"]; filter.$or=fields.map(f=>({[f]:{$regex:search,$options:"i"}})); }
     if(month && year){ const m=Number(month), y=Number(year); if(m>=1&&m<=12){filter.date={$gte:new Date(y,m-1,1),$lt:new Date(y,m,1)}} }
     const limit=10,currentPage=Math.max(Number(page)||1,1),skip=(currentPage-1)*limit;
     const [entries,totalData]=await Promise.all([Model.find(filter).sort({date:-1,createdAt:-1}).skip(skip).limit(limit).lean(),Model.countDocuments(filter)]);
@@ -57,6 +57,7 @@ const updateEntry = async (req,res) => {
     const d=req.body.entryData||{}; const date=normalizeDate(d.date), amount=Number(d.amount); if(!date||!Number.isFinite(amount)||amount<0)return res.status(400).json({success:false,message:"Invalid date or amount"});
     const update={date,amount};
     if(Model.modelName==="Service") update.serviceDetail=String(d.serviceDetail||"").trim(); else Object.assign(update,{productName:String(d.productName||"").trim(),invoiceNo:String(d.invoiceNo||"").trim(),serialNo:String(d.serialNo||"").trim()});
+    update.remarks=String(d.remarks||"").trim();
     const duplicate=Model.modelName!=="Service" ? await Model.findOne({partyId:req.body.partyId,_id:{$ne:id},$or:[{invoiceNo:update.invoiceNo},{serialNo:update.serialNo}]}) : null;
     if(duplicate)return res.status(409).json({success:false,message:"Invoice or serial number already exists"});
     const entry=await Model.findOneAndUpdate({_id:id,partyId:req.body.partyId},update,{new:true,runValidators:true});
