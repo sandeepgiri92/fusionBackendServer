@@ -1,9 +1,15 @@
 const argon2 = require("argon2");
 const jwt = require("jsonwebtoken");
 const crypto = require("crypto");
-const nodemailer = require("nodemailer");
+const { Resend } = require("resend");
 
 const Admin = require("../models/user");
+
+// ============================================================
+// RESEND
+// ============================================================
+
+const resend = new Resend(process.env.RESEND_API_KEY);
 
 // ============================================================
 // COOKIE OPTIONS
@@ -143,96 +149,32 @@ const logout = async (_req, res) => {
 };
 
 // ============================================================
-// GMAIL SMTP TRANSPORTER
-// ============================================================
-//
-// .env:
-//
-// GMAIL_USER=yourgmail@gmail.com
-// GMAIL_APP_PASSWORD=your16characterapppassword
-//
-// IMPORTANT:
-// GMAIL_APP_PASSWORD normal Gmail password nahi hai.
-// Google 2-Step Verification enable karke App Password
-// generate karna hota hai.
-//
-// ============================================================
-
-const createMailTransporter = () => {
-  const gmailUser = String(process.env.GMAIL_USER || "").trim();
-  const gmailPassword = String(process.env.GMAIL_APP_PASSWORD || "").replace(
-    /\s/g,
-    "",
-  );
-
-  if (!gmailUser || !gmailPassword) {
-    throw new Error("GMAIL_USER and GMAIL_APP_PASSWORD are not configured");
-  }
-
-  // Explicit Gmail SMTP configuration
-  const transporter = nodemailer.createTransport({
-    host: "smtp.gmail.com",
-    port: 587,
-    secure: false,
-
-    auth: {
-      user: gmailUser,
-      pass: gmailPassword,
-    },
-
-    // STARTTLS
-    requireTLS: true,
-
-    // --------------------------------------------------------
-    // IMPORTANT FIX
-    // --------------------------------------------------------
-    //
-    // Tumhare system/network/antivirus/proxy ki wajah se
-    // certificate chain self-signed aa rahi hai.
-    //
-    // Development/local environment mein certificate
-    // verification bypass kar rahe hain.
-    //
-    // Production mein ise true rakhna better hai.
-    // --------------------------------------------------------
-
-    tls: {
-      minVersion: "TLSv1.2",
-      rejectUnauthorized: process.env.NODE_ENV === "production",
-    },
-
-    connectionTimeout: 30000,
-    greetingTimeout: 30000,
-    socketTimeout: 60000,
-  });
-
-  return transporter;
-};
-
-// ============================================================
-// SEND OTP EMAIL
+// SEND OTP EMAIL USING RESEND
 // ============================================================
 
 const sendOtpEmail = async ({ email, otp }) => {
-  const transporter = createMailTransporter();
+  const apiKey = String(process.env.RESEND_API_KEY || "").trim();
 
-  const gmailUser = String(process.env.GMAIL_USER || "").trim();
+  const from = String(
+    process.env.MAIL_FROM ||
+      "Fusion Enterprise <no-reply@fusionenterprises.linkpc.net>",
+  ).trim();
+
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+
+  if (!from) {
+    throw new Error("MAIL_FROM is not configured");
+  }
 
   // ----------------------------------------------------------
-  // Verify SMTP connection before sending
+  // Send email using Resend API
   // ----------------------------------------------------------
 
-  await transporter.verify();
-
-  // ----------------------------------------------------------
-  // Send email
-  // ----------------------------------------------------------
-
-  const info = await transporter.sendMail({
-    from: `"Fusion Enterprise" <${gmailUser}>`,
-
-    to: email,
-
+  const { data, error } = await resend.emails.send({
+    from,
+    to: [email],
     subject: "Fusion Enterprise - Password Reset OTP",
 
     text: `
@@ -245,115 +187,138 @@ please ignore this email.
     `.trim(),
 
     html: `
-      <!DOCTYPE html>
-      <html>
-        <head>
-          <meta charset="UTF-8" />
-          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-          <title>Password Reset OTP</title>
-        </head>
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0"
+    />
+    <title>Password Reset OTP</title>
+  </head>
 
-        <body
+  <body
+    style="
+      margin: 0;
+      padding: 0;
+      background: #f8fafc;
+      font-family: Arial, Helvetica, sans-serif;
+    "
+  >
+
+    <div
+      style="
+        max-width: 520px;
+        margin: 40px auto;
+        padding: 24px;
+        background: #ffffff;
+        border: 1px solid #e5e7eb;
+        border-radius: 14px;
+      "
+    >
+
+      <h2
+        style="
+          margin: 0 0 12px;
+          color: #111827;
+          font-size: 24px;
+        "
+      >
+        Fusion Enterprise
+      </h2>
+
+      <p
+        style="
+          margin: 0 0 18px;
+          color: #334155;
+          font-size: 15px;
+          line-height: 1.6;
+        "
+      >
+        A password reset was requested for your admin account.
+      </p>
+
+      <p
+        style="
+          margin: 0;
+          color: #64748b;
+          font-size: 14px;
+        "
+      >
+        Your verification code is:
+      </p>
+
+      <div
+        style="
+          margin: 20px 0;
+          padding: 18px;
+          background: #f1f5f9;
+          border-radius: 10px;
+          text-align: center;
+        "
+      >
+
+        <span
           style="
-            margin: 0;
-            padding: 0;
-            background: #f8fafc;
-            font-family: Arial, Helvetica, sans-serif;
+            font-size: 34px;
+            font-weight: 700;
+            letter-spacing: 8px;
+            color: #111827;
           "
         >
-          <div
-            style="
-              max-width: 520px;
-              margin: 40px auto;
-              padding: 24px;
-              background: #ffffff;
-              border: 1px solid #e5e7eb;
-              border-radius: 14px;
-            "
-          >
+          ${otp}
+        </span>
 
-            <h2
-              style="
-                margin: 0 0 12px;
-                color: #111827;
-                font-size: 24px;
-              "
-            >
-              Fusion Enterprise
-            </h2>
+      </div>
 
-            <p
-              style="
-                margin: 0 0 18px;
-                color: #334155;
-                font-size: 15px;
-                line-height: 1.6;
-              "
-            >
-              A password reset was requested for your admin account.
-            </p>
+      <p
+        style="
+          margin: 0 0 12px;
+          color: #334155;
+          font-size: 14px;
+        "
+      >
+        This OTP expires in
+        <strong>10 minutes</strong>.
+      </p>
 
-            <p
-              style="
-                margin: 0;
-                color: #64748b;
-                font-size: 14px;
-              "
-            >
-              Your verification code is:
-            </p>
+      <p
+        style="
+          margin: 20px 0 0;
+          color: #94a3b8;
+          font-size: 12px;
+          line-height: 1.5;
+        "
+      >
+        If you did not request this password reset,
+        you can safely ignore this email.
+      </p>
 
-            <div
-              style="
-                margin: 20px 0;
-                padding: 18px;
-                background: #f1f5f9;
-                border-radius: 10px;
-                text-align: center;
-              "
-            >
-              <span
-                style="
-                  font-size: 34px;
-                  font-weight: 700;
-                  letter-spacing: 8px;
-                  color: #111827;
-                "
-              >
-                ${otp}
-              </span>
-            </div>
+    </div>
 
-            <p
-              style="
-                margin: 0 0 12px;
-                color: #334155;
-                font-size: 14px;
-              "
-            >
-              This OTP expires in
-              <strong>10 minutes</strong>.
-            </p>
-
-            <p
-              style="
-                margin: 20px 0 0;
-                color: #94a3b8;
-                font-size: 12px;
-                line-height: 1.5;
-              "
-            >
-              If you did not request this password reset,
-              you can safely ignore this email.
-            </p>
-
-          </div>
-        </body>
-      </html>
+  </body>
+</html>
     `,
   });
 
-  return info;
+  // ----------------------------------------------------------
+  // Resend returned an error
+  // ----------------------------------------------------------
+
+  if (error) {
+    console.error("RESEND API ERROR:", error);
+
+    throw new Error(error.message || "Failed to send email using Resend");
+  }
+
+  // ----------------------------------------------------------
+  // Success
+  // ----------------------------------------------------------
+
+  // console.log("RESEND EMAIL SENT:", data);
+
+  return data;
 };
 
 // ============================================================
@@ -377,7 +342,6 @@ const forgotPassword = async (req, res) => {
       });
     }
 
-    // Basic email format validation
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
     if (!emailRegex.test(email)) {
@@ -392,10 +356,6 @@ const forgotPassword = async (req, res) => {
     // --------------------------------------------------------
 
     const admin = await Admin.findOne({ email });
-
-    // --------------------------------------------------------
-    // Email does not exist
-    // --------------------------------------------------------
 
     if (!admin) {
       return res.status(404).json({
@@ -440,7 +400,8 @@ const forgotPassword = async (req, res) => {
     } catch (emailError) {
       console.error("OTP EMAIL ERROR:", emailError);
 
-      // Email send fail hua to OTP active nahi rehna chahiye
+      // Email fail hua to OTP active nahi rehna chahiye
+
       admin.resetOtp = undefined;
       admin.resetOtpExpires = undefined;
       admin.resetOtpAttempts = 0;
@@ -449,7 +410,7 @@ const forgotPassword = async (req, res) => {
 
       return res.status(500).json({
         success: false,
-        message: "Unable to send OTP. Please check Gmail configuration.",
+        message: "Unable to send OTP. Please check Resend configuration.",
       });
     }
 
