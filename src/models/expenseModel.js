@@ -20,6 +20,11 @@ const expenseSchema = new mongoose.Schema(
             type:String,
             trim:true,
             required: true,
+        },
+        // Payment status is used only for SMC and Other expenses.
+        status:{
+            type:String,
+            enum:["paid","pending"],
         }
     },
     {
