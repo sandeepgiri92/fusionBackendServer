@@ -10,6 +10,7 @@ const adminLoginRouter = require("./routes/adminLoginRouter");
 const partiesRouter = require("./routes/partiesRouter");
 const entryRouter = require("./routes/entryRouter");
 const expenseRouter = require("./routes/expenseRouter");
+const stockRouter = require("./routes/stockRouter");
 
 const Sale = require("./models/SaleModel");
 const Purchase = require("./models/purchaseModel");
@@ -91,7 +92,7 @@ app.use("/api/admin", authMiddleware, partiesRouter);
    PROTECTED ENTRY + EXPENSE
 ========================= */
 
-app.use("/api", authMiddleware, entryRouter, expenseRouter);
+app.use("/api", authMiddleware, entryRouter, expenseRouter, stockRouter);
 
 /* =========================
    DASHBOARD
@@ -99,7 +100,7 @@ app.use("/api", authMiddleware, entryRouter, expenseRouter);
 
 app.get("/api/dashboard", authMiddleware, async (req, res) => {
   try {
-    const [sale, purchase, service, expense, parties, paid, pending, recent] =
+    const [sale, purchase, service, expense, parties, paid, pending, allTransactionAmount, recent] =
       await Promise.all([
         Sale.aggregate([
           {
@@ -146,35 +147,17 @@ app.get("/api/dashboard", authMiddleware, async (req, res) => {
         }),
 
         Transaction.aggregate([
-          {
-            $match: {
-              paymentStatus: "paid",
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              total: {
-                $sum: "$amount",
-              },
-            },
-          },
+          { $unwind: { path: "$payments", preserveNullAndEmptyArrays: true } },
+          { $group: { _id: null, total: { $sum: { $ifNull: ["$payments.amount", 0] } } } },
         ]),
 
         Transaction.aggregate([
-          {
-            $match: {
-              paymentStatus: "pending",
-            },
-          },
-          {
-            $group: {
-              _id: null,
-              total: {
-                $sum: "$amount",
-              },
-            },
-          },
+          { $project: { amount: 1, paid: { $sum: { $ifNull: ["$payments.amount", []] } } } },
+          { $group: { _id: null, total: { $sum: { $max: [{ $subtract: ["$amount", "$paid"] }, 0] } } } },
+        ]),
+
+        Transaction.aggregate([
+          { $group: { _id: null, total: { $sum: "$amount" } } },
         ]),
 
         Transaction.find()
@@ -197,6 +180,7 @@ app.get("/api/dashboard", authMiddleware, async (req, res) => {
         partyCount: parties,
         paid: paid[0]?.total || 0,
         pending: pending[0]?.total || 0,
+        transactionTotal: allTransactionAmount[0]?.total || 0,
       },
 
       recent: recent.map((x) => ({

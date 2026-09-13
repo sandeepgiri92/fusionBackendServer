@@ -1,0 +1,1 @@
+const express=require("express");const router=express.Router();const {listStock,createStock,updateStock,deleteStock}=require("../controller/stockController");router.get("/stock",listStock);router.post("/stock",createStock);router.patch("/stock/:id",updateStock);router.delete("/stock/:id",deleteStock);module.exports=router;

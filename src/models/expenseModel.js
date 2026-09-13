@@ -1,36 +1,17 @@
-const mongoose = require("mongoose")
+const mongoose=require("mongoose");
 
-const expenseSchema = new mongoose.Schema(
-    {
-        expenseType:{
-            type:String,
-            trim:true,
-            required: true,
-        },
-        date:{
-            type:Date,
-            required: true,
-        },
-        amount:{
-            type:Number,
-            min: 0,
-            required: true,
-        },
-        remarks:{
-            type:String,
-            trim:true,
-            required: true,
-        },
-        // Payment status is used only for SMC and Other expenses.
-        status:{
-            type:String,
-            enum:["paid","pending"],
-        }
-    },
-    {
-        timestamps:true,
-    }
-)
+const paymentSchema = new mongoose.Schema({
+  amount: { type:Number, required:true, min:0 },
+  paymentDate: { type:Date, required:true },
+  remarks: { type:String, trim:true, default:"" },
+}, { _id:true, timestamps:true });
 
-
-module.exports = mongoose.model("Exprense",expenseSchema)
+const expenseSchema=new mongoose.Schema({
+  expenseType:{type:String,required:true,trim:true},
+  date:{type:Date,required:true},
+  amount:{type:Number,required:true,min:0},
+  remarks:{type:String,trim:true,default:""},
+  status:{type:String,enum:["paid","pending","partial"],default:"pending"},
+  payments:{type:[paymentSchema],default:[]},
+},{timestamps:true});
+module.exports=mongoose.model("Expense",expenseSchema);
