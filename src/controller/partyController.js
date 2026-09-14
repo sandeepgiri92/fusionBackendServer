@@ -10,11 +10,12 @@ const createParty = async (req, res) => {
   try {
     const name = String(req.body.name || "").trim();
     const contactNo = String(req.body.contactNo || "").trim();
+    const address = String(req.body.address || "").trim();
     const module = String(req.body.module || "").trim().toLowerCase();
     if (!name || !contactNo || !allowedModules.includes(module)) return res.status(400).json({ success:false, message:"Name, mobile and valid module are required" });
     let party = await Party.findOne({ contactNo });
     if (!party) {
-      party = await Party.create({ name, contactNo, modules: { sale: module === "sale", purchase: module === "purchase", service: module === "service" } });
+      party = await Party.create({ name, contactNo, address, modules: { sale: module === "sale", purchase: module === "purchase", service: module === "service" } });
       return res.status(201).json({ success:true, message:"Party created successfully", data:party });
     }
     if (party.modules[module]) return res.status(409).json({ success:false, message:`Party already exists in ${module} module`, data:party });
@@ -43,6 +44,7 @@ const updateParty = async (req, res) => {
     const updates = {};
     if (req.body.name !== undefined) updates.name = String(req.body.name).trim();
     if (req.body.contactNo !== undefined) updates.contactNo = String(req.body.contactNo).trim();
+    if (req.body.address !== undefined) updates.address = String(req.body.address).trim();
     const party = await Party.findByIdAndUpdate(id, updates, {new:true,runValidators:true});
     if (!party) return res.status(404).json({success:false,message:"Party not found"});
     return res.json({success:true,message:"Party updated",data:party});

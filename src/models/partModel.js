@@ -12,6 +12,11 @@ const partSchema = new mongoose.Schema(
       required: true,
       trim: true,
     },
+    address: {
+      type: String,
+      trim: true,
+      default: "",
+    },
     modules: {
       sale: {
         type: Boolean,
