@@ -36,9 +36,25 @@ const getExpense=async(req,res)=>{
         const type=String(req.params.type),page=Math.max(Number(req.query.page)||1,1),limit=10,skip=(page-1)*limit;
         const filter={expenseType:type};
 
-        const [expenses,totalData]=await Promise.all([
+        const [expenses,totalData,summaryRows]=await Promise.all([
             Expense.find(filter).sort({date:-1,createdAt:-1}).skip(skip).limit(limit).lean(),
-            Expense.countDocuments(filter)
+            Expense.countDocuments(filter),
+            Expense.aggregate([
+                {$match:filter},
+                {$project:{
+                    amount:1,
+                    paid:{$reduce:{
+                        input:{$ifNull:["$payments",[]]},
+                        initialValue:0,
+                        in:{$add:["$$value",{$toDouble:{$ifNull:["$$this.amount",0]}}]}
+                    }}
+                }},
+                {$group:{
+                    _id:null,
+                    totalExpense:{$sum:{$toDouble:{$ifNull:["$amount",0]}}},
+                    totalPaid:{$sum:"$paid"}
+                }}
+            ])
         ]);
 
         // Older SMC/Other records did not have a status. Treat them as pending
@@ -48,9 +64,17 @@ const getExpense=async(req,res)=>{
             : expenses;
 
         const totalPages=Math.ceil(totalData/limit);
+        const summary=summaryRows[0]||{totalExpense:0,totalPaid:0};
+        const totalExpense=Number(summary.totalExpense||0);
+        const totalPaid=Math.min(Number(summary.totalPaid||0),totalExpense);
         return res.json({
             success:true,
             expenses:result,
+            summary:{
+                totalExpense,
+                totalPaid,
+                totalUnpaid:Math.max(totalExpense-totalPaid,0)
+            },
             pagination:{
                 currentPage:page,
                 limit,
