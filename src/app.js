@@ -7,6 +7,7 @@ const cookieParser = require("cookie-parser");
 
 const authMiddleware = require("./midleware/authMiddleware");
 const mobileAuthMiddleware = require("./midleware/mobileAuthMiddleware");
+const combinedAuthMiddleware = require("./midleware/combinedAuthMiddleware");
 
 // ============================================================
 // ROUTES
@@ -115,7 +116,7 @@ app.use("/api/admin", adminLoginRouter);
 // ============================================================
 // MOBILE AUTH ROUTES
 // ============================================================
-// NEW MOBILE AUTH
+// MOBILE AUTH
 // Bearer token based authentication
 //
 // Login:
@@ -134,10 +135,6 @@ app.use("/api/mobile-auth", mobileAuthRoutes);
 // HEALTH CHECK
 // ============================================================
 // PUBLIC ROUTE
-//
-// IMPORTANT:
-// This MUST be before the generic protected /api middleware
-// below. Otherwise authMiddleware will intercept this request.
 // ============================================================
 
 app.get("/api/health", (req, res) => {
@@ -151,19 +148,11 @@ app.get("/api/health", (req, res) => {
 // ============================================================
 // DASHBOARD AUTH
 // ============================================================
-// IMPORTANT:
-//
 // Website:
 // accessToken cookie
-//      ↓
-// authMiddleware
 //
 // Mobile:
 // Authorization: Bearer <JWT>
-//      ↓
-// mobileAuthMiddleware
-//
-// This keeps the existing website authentication unchanged.
 // ============================================================
 
 const dashboardAuthMiddleware = (req, res, next) => {
@@ -188,15 +177,7 @@ const dashboardAuthMiddleware = (req, res, next) => {
 // ============================================================
 // DASHBOARD
 // ============================================================
-// IMPORTANT:
-//
-// Dashboard MUST be before:
-//
-// app.use("/api", authMiddleware, ...)
-//
-// Otherwise the generic cookie auth middleware will intercept
-// mobile requests before dashboardAuthMiddleware gets a chance
-// to check the Bearer token.
+// MUST BE BEFORE GENERIC /api AUTH MIDDLEWARE
 // ============================================================
 
 app.get(
@@ -408,26 +389,36 @@ app.get(
 // ============================================================
 // PROTECTED PARTY ROUTES
 // ============================================================
-// WEB AUTH
+// EXISTING WEBSITE AUTH
 // Cookie:
 // accessToken
+//
+// DO NOT CHANGE
 // ============================================================
 
-app.use("/api/admin", authMiddleware, partiesRouter);
+app.use(
+  "/api/admin",
+  authMiddleware,
+  partiesRouter,
+);
 
 // ============================================================
 // PROTECTED ENTRY + EXPENSE + STOCK ROUTES
 // ============================================================
-// WEB AUTH
+// BOTH WEB + MOBILE
 //
-// IMPORTANT:
-// This remains unchanged.
-// It comes AFTER /api/health and /api/dashboard.
+// Website:
+// Cookie accessToken
+//
+// Mobile:
+// Authorization: Bearer JWT
+//
+// Existing route URLs remain unchanged.
 // ============================================================
 
 app.use(
   "/api",
-  authMiddleware,
+  combinedAuthMiddleware,
   entryRouter,
   expenseRouter,
   stockRouter,
