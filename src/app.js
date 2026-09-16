@@ -6,11 +6,21 @@ const cookieParser = require("cookie-parser");
 
 const authMiddleware = require("./midleware/authMiddleware");
 
+// ============================================================
+// ROUTES
+// ============================================================
+
 const adminLoginRouter = require("./routes/adminLoginRouter");
+const mobileAuthRoutes = require("./routes/mobileAuthRoutes");
+
 const partiesRouter = require("./routes/partiesRouter");
 const entryRouter = require("./routes/entryRouter");
 const expenseRouter = require("./routes/expenseRouter");
 const stockRouter = require("./routes/stockRouter");
+
+// ============================================================
+// MODELS
+// ============================================================
 
 const Sale = require("./models/SaleModel");
 const Purchase = require("./models/purchaseModel");
@@ -19,26 +29,33 @@ const Expense = require("./models/expenseModel");
 const Transaction = require("./models/transactionModel");
 const Party = require("./models/partModel");
 
+// ============================================================
+// APP
+// ============================================================
+
 const app = express();
 
-/* =========================
-   CORS
-========================= */
+// ============================================================
+// TRUST PROXY
+// ============================================================
+
+app.set("trust proxy", 1);
+
+// ============================================================
+// CORS
+// ============================================================
 
 const allowedOrigins = [
   "https://fusionenterprises.vercel.app",
   "http://localhost:5173",
 ];
 
-app.set("trust proxy", 1);
-
-app.use(helmet());
-
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests without origin
-      // e.g. Postman, server-to-server
+      // Allow requests without Origin
+      // React Native / Expo / Postman can send requests
+      // without a browser Origin header.
       if (!origin) {
         return callback(null, true);
       }
@@ -54,17 +71,23 @@ app.use(
   }),
 );
 
-/* =========================
-   BODY PARSER
-========================= */
+// ============================================================
+// SECURITY
+// ============================================================
+
+app.use(helmet());
+
+// ============================================================
+// BODY PARSER
+// ============================================================
 
 app.use(express.json({ limit: "1mb" }));
 
 app.use(cookieParser());
 
-/* =========================
-   RATE LIMIT
-========================= */
+// ============================================================
+// GLOBAL API RATE LIMIT
+// ============================================================
 
 app.use(
   "/api",
@@ -76,98 +99,220 @@ app.use(
   }),
 );
 
-/* =========================
-   ADMIN AUTH ROUTES
-========================= */
+// ============================================================
+// WEB ADMIN AUTH ROUTES
+// ============================================================
+// EXISTING WEB AUTH
+// Cookie based authentication
+//
+// DO NOT CHANGE
+// ============================================================
 
 app.use("/api/admin", adminLoginRouter);
 
-/* =========================
-   PROTECTED PARTY ROUTES
-========================= */
+// ============================================================
+// MOBILE AUTH ROUTES
+// ============================================================
+// NEW MOBILE AUTH
+// Bearer token based authentication
+//
+// Login:
+// POST /api/mobile-auth/login
+//
+// Current user:
+// GET /api/mobile-auth/me
+//
+// Logout:
+// POST /api/mobile-auth/logout
+// ============================================================
+
+app.use("/api/mobile-auth", mobileAuthRoutes);
+
+// ============================================================
+// PROTECTED PARTY ROUTES
+// ============================================================
+// WEB AUTH
+// Cookie:
+// accessToken
+// ============================================================
 
 app.use("/api/admin", authMiddleware, partiesRouter);
 
-/* =========================
-   PROTECTED ENTRY + EXPENSE
-========================= */
+// ============================================================
+// PROTECTED ENTRY + EXPENSE + STOCK ROUTES
+// ============================================================
+// WEB AUTH
+// ============================================================
 
 app.use("/api", authMiddleware, entryRouter, expenseRouter, stockRouter);
 
-/* =========================
-   DASHBOARD
-========================= */
+// ============================================================
+// DASHBOARD
+// ============================================================
 
 app.get("/api/dashboard", authMiddleware, async (req, res) => {
   try {
-    const [sale, purchase, service, expense, parties, paid, pending, allTransactionAmount, recent] =
-      await Promise.all([
-        Sale.aggregate([
-          {
-            $group: {
-              _id: null,
-              total: { $sum: "$amount" },
-              count: { $sum: 1 },
+    const [
+      sale,
+      purchase,
+      service,
+      expense,
+      parties,
+      paid,
+      pending,
+      allTransactionAmount,
+      recent,
+    ] = await Promise.all([
+      // ------------------------------------------------------
+      // SALE
+      // ------------------------------------------------------
+
+      Sale.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: { $sum: "$amount" },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // ------------------------------------------------------
+      // PURCHASE
+      // ------------------------------------------------------
+
+      Purchase.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: { $sum: "$amount" },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // ------------------------------------------------------
+      // SERVICE
+      // ------------------------------------------------------
+
+      Service.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: { $sum: "$amount" },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // ------------------------------------------------------
+      // EXPENSE
+      // ------------------------------------------------------
+
+      Expense.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: { $sum: "$amount" },
+            count: { $sum: 1 },
+          },
+        },
+      ]),
+
+      // ------------------------------------------------------
+      // ACTIVE PARTIES
+      // ------------------------------------------------------
+
+      Party.countDocuments({
+        isActive: true,
+      }),
+
+      // ------------------------------------------------------
+      // PAID
+      // ------------------------------------------------------
+
+      Transaction.aggregate([
+        {
+          $unwind: {
+            path: "$payments",
+            preserveNullAndEmptyArrays: true,
+          },
+        },
+        {
+          $group: {
+            _id: null,
+            total: {
+              $sum: {
+                $ifNull: ["$payments.amount", 0],
+              },
             },
           },
-        ]),
+        },
+      ]),
 
-        Purchase.aggregate([
-          {
-            $group: {
-              _id: null,
-              total: { $sum: "$amount" },
-              count: { $sum: 1 },
+      // ------------------------------------------------------
+      // PENDING
+      // ------------------------------------------------------
+
+      Transaction.aggregate([
+        {
+          $project: {
+            amount: 1,
+            paid: {
+              $sum: {
+                $ifNull: ["$payments.amount", []],
+              },
             },
           },
-        ]),
-
-        Service.aggregate([
-          {
-            $group: {
-              _id: null,
-              total: { $sum: "$amount" },
-              count: { $sum: 1 },
+        },
+        {
+          $group: {
+            _id: null,
+            total: {
+              $sum: {
+                $max: [
+                  {
+                    $subtract: ["$amount", "$paid"],
+                  },
+                  0,
+                ],
+              },
             },
           },
-        ]),
+        },
+      ]),
 
-        Expense.aggregate([
-          {
-            $group: {
-              _id: null,
-              total: { $sum: "$amount" },
-              count: { $sum: 1 },
+      // ------------------------------------------------------
+      // TOTAL TRANSACTIONS
+      // ------------------------------------------------------
+
+      Transaction.aggregate([
+        {
+          $group: {
+            _id: null,
+            total: {
+              $sum: "$amount",
             },
           },
-        ]),
+        },
+      ]),
 
-        Party.countDocuments({
-          isActive: true,
-        }),
+      // ------------------------------------------------------
+      // RECENT TRANSACTIONS
+      // ------------------------------------------------------
 
-        Transaction.aggregate([
-          { $unwind: { path: "$payments", preserveNullAndEmptyArrays: true } },
-          { $group: { _id: null, total: { $sum: { $ifNull: ["$payments.amount", 0] } } } },
-        ]),
+      Transaction.find()
+        .populate("partyId", "name")
+        .sort({
+          createdAt: -1,
+        })
+        .limit(6)
+        .lean(),
+    ]);
 
-        Transaction.aggregate([
-          { $project: { amount: 1, paid: { $sum: { $ifNull: ["$payments.amount", []] } } } },
-          { $group: { _id: null, total: { $sum: { $max: [{ $subtract: ["$amount", "$paid"] }, 0] } } } },
-        ]),
-
-        Transaction.aggregate([
-          { $group: { _id: null, total: { $sum: "$amount" } } },
-        ]),
-
-        Transaction.find()
-          .populate("partyId", "name")
-          .sort({
-            createdAt: -1,
-          })
-          .limit(6)
-          .lean(),
-      ]);
+    // ========================================================
+    // RESPONSE
+    // ========================================================
 
     return res.json({
       success: true,
@@ -177,9 +322,13 @@ app.get("/api/dashboard", authMiddleware, async (req, res) => {
         purchase: purchase[0]?.total || 0,
         service: service[0]?.total || 0,
         expense: expense[0]?.total || 0,
+
         partyCount: parties,
+
         paid: paid[0]?.total || 0,
+
         pending: pending[0]?.total || 0,
+
         transactionTotal: allTransactionAmount[0]?.total || 0,
       },
 
@@ -202,37 +351,40 @@ app.get("/api/dashboard", authMiddleware, async (req, res) => {
   }
 });
 
-/* =========================
-   HEALTH CHECK
-========================= */
+// ============================================================
+// HEALTH CHECK
+// ============================================================
 
 app.get("/api/health", (req, res) => {
-  res.json({
+  return res.json({
     success: true,
     status: "ok",
     timestamp: new Date(),
   });
 });
 
-/* =========================
-   ROOT
-========================= */
+// ============================================================
+// ROOT
+// ============================================================
 
 app.get("/", (req, res) => {
-  res.json({
+  return res.json({
     success: true,
     message: "Fusion API is running",
   });
 });
 
-/* =========================
-   ERROR HANDLER
-========================= */
+// ============================================================
+// ERROR HANDLER
+// ============================================================
 
 app.use((err, req, res, next) => {
   console.error("SERVER ERROR:", err);
 
-  // CORS error
+  // ----------------------------------------------------------
+  // CORS ERROR
+  // ----------------------------------------------------------
+
   if (err.message?.startsWith("CORS blocked")) {
     return res.status(403).json({
       success: false,
@@ -240,10 +392,18 @@ app.use((err, req, res, next) => {
     });
   }
 
+  // ----------------------------------------------------------
+  // GENERAL ERROR
+  // ----------------------------------------------------------
+
   return res.status(500).json({
     success: false,
     message: "Unexpected server error",
   });
 });
+
+// ============================================================
+// EXPORT
+// ============================================================
 
 module.exports = app;
