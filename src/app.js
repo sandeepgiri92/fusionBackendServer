@@ -1,4 +1,3 @@
-
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -387,18 +386,47 @@ app.get(
 );
 
 // ============================================================
-// PROTECTED PARTY ROUTES
+// PROTECTED PARTY ROUTES — WEBSITE
 // ============================================================
 // EXISTING WEBSITE AUTH
 // Cookie:
 // accessToken
 //
 // DO NOT CHANGE
+//
+// Existing URLs:
+// POST   /api/admin/add-new-party
+// GET    /api/admin/get-parties
+// PATCH  /api/admin/party/:id
+// DELETE /api/admin/party/:id
 // ============================================================
 
 app.use(
   "/api/admin",
   authMiddleware,
+  partiesRouter,
+);
+
+// ============================================================
+// PROTECTED PARTY ROUTES — MOBILE
+// ============================================================
+// MOBILE AUTH
+// Bearer:
+// Authorization: Bearer <JWT>
+//
+// Mobile URLs:
+// POST   /api/mobile/add-new-party
+// GET    /api/mobile/get-parties
+// PATCH  /api/mobile/party/:id
+// DELETE /api/mobile/party/:id
+//
+// IMPORTANT:
+// Existing website Party routes above are NOT changed.
+// ============================================================
+
+app.use(
+  "/api/mobile",
+  combinedAuthMiddleware,
   partiesRouter,
 );
 
@@ -468,4 +496,3 @@ app.use((err, req, res, next) => {
 // ============================================================
 
 module.exports = app;
-
