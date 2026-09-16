@@ -5,6 +5,7 @@ const rateLimit = require("express-rate-limit");
 const cookieParser = require("cookie-parser");
 
 const authMiddleware = require("./midleware/authMiddleware");
+const mobileAuthMiddleware = require("./midleware/mobileAuthMiddleware");
 
 // ============================================================
 // ROUTES
@@ -144,212 +145,265 @@ app.use("/api/admin", authMiddleware, partiesRouter);
 // WEB AUTH
 // ============================================================
 
-app.use("/api", authMiddleware, entryRouter, expenseRouter, stockRouter);
+app.use(
+  "/api",
+  authMiddleware,
+  entryRouter,
+  expenseRouter,
+  stockRouter,
+);
+
+// ============================================================
+// DASHBOARD AUTH
+// ============================================================
+// IMPORTANT:
+//
+// Website:
+// accessToken cookie
+//      ↓
+// authMiddleware
+//
+// Mobile:
+// Authorization: Bearer <JWT>
+//      ↓
+// mobileAuthMiddleware
+//
+// This keeps the existing website authentication unchanged.
+// ============================================================
+
+const dashboardAuthMiddleware = (req, res, next) => {
+  // ----------------------------------------------------------
+  // MOBILE REQUEST
+  // ----------------------------------------------------------
+  // If Authorization Bearer token exists,
+  // use mobile JWT authentication.
+  // ----------------------------------------------------------
+
+  if (
+    req.headers.authorization &&
+    req.headers.authorization.startsWith("Bearer ")
+  ) {
+    return mobileAuthMiddleware(req, res, next);
+  }
+
+  // ----------------------------------------------------------
+  // WEB REQUEST
+  // ----------------------------------------------------------
+  // Existing website continues using cookie authentication.
+  // ----------------------------------------------------------
+
+  return authMiddleware(req, res, next);
+};
 
 // ============================================================
 // DASHBOARD
 // ============================================================
 
-app.get("/api/dashboard", authMiddleware, async (req, res) => {
-  try {
-    const [
-      sale,
-      purchase,
-      service,
-      expense,
-      parties,
-      paid,
-      pending,
-      allTransactionAmount,
-      recent,
-    ] = await Promise.all([
-      // ------------------------------------------------------
-      // SALE
-      // ------------------------------------------------------
+app.get(
+  "/api/dashboard",
+  dashboardAuthMiddleware,
+  async (req, res) => {
+    try {
+      const [
+        sale,
+        purchase,
+        service,
+        expense,
+        parties,
+        paid,
+        pending,
+        allTransactionAmount,
+        recent,
+      ] = await Promise.all([
+        // ------------------------------------------------------
+        // SALE
+        // ------------------------------------------------------
 
-      Sale.aggregate([
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$amount" },
-            count: { $sum: 1 },
+        Sale.aggregate([
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$amount" },
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]),
+        ]),
 
-      // ------------------------------------------------------
-      // PURCHASE
-      // ------------------------------------------------------
+        // ------------------------------------------------------
+        // PURCHASE
+        // ------------------------------------------------------
 
-      Purchase.aggregate([
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$amount" },
-            count: { $sum: 1 },
+        Purchase.aggregate([
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$amount" },
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]),
+        ]),
 
-      // ------------------------------------------------------
-      // SERVICE
-      // ------------------------------------------------------
+        // ------------------------------------------------------
+        // SERVICE
+        // ------------------------------------------------------
 
-      Service.aggregate([
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$amount" },
-            count: { $sum: 1 },
+        Service.aggregate([
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$amount" },
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]),
+        ]),
 
-      // ------------------------------------------------------
-      // EXPENSE
-      // ------------------------------------------------------
+        // ------------------------------------------------------
+        // EXPENSE
+        // ------------------------------------------------------
 
-      Expense.aggregate([
-        {
-          $group: {
-            _id: null,
-            total: { $sum: "$amount" },
-            count: { $sum: 1 },
+        Expense.aggregate([
+          {
+            $group: {
+              _id: null,
+              total: { $sum: "$amount" },
+              count: { $sum: 1 },
+            },
           },
-        },
-      ]),
+        ]),
 
-      // ------------------------------------------------------
-      // ACTIVE PARTIES
-      // ------------------------------------------------------
+        // ------------------------------------------------------
+        // ACTIVE PARTIES
+        // ------------------------------------------------------
 
-      Party.countDocuments({
-        isActive: true,
-      }),
+        Party.countDocuments({
+          isActive: true,
+        }),
 
-      // ------------------------------------------------------
-      // PAID
-      // ------------------------------------------------------
+        // ------------------------------------------------------
+        // PAID
+        // ------------------------------------------------------
 
-      Transaction.aggregate([
-        {
-          $unwind: {
-            path: "$payments",
-            preserveNullAndEmptyArrays: true,
+        Transaction.aggregate([
+          {
+            $unwind: {
+              path: "$payments",
+              preserveNullAndEmptyArrays: true,
+            },
           },
-        },
-        {
-          $group: {
-            _id: null,
-            total: {
-              $sum: {
-                $ifNull: ["$payments.amount", 0],
+          {
+            $group: {
+              _id: null,
+              total: {
+                $sum: {
+                  $ifNull: ["$payments.amount", 0],
+                },
               },
             },
           },
-        },
-      ]),
+        ]),
 
-      // ------------------------------------------------------
-      // PENDING
-      // ------------------------------------------------------
+        // ------------------------------------------------------
+        // PENDING
+        // ------------------------------------------------------
 
-      Transaction.aggregate([
-        {
-          $project: {
-            amount: 1,
-            paid: {
-              $sum: {
-                $ifNull: ["$payments.amount", []],
+        Transaction.aggregate([
+          {
+            $project: {
+              amount: 1,
+              paid: {
+                $sum: {
+                  $ifNull: ["$payments.amount", []],
+                },
               },
             },
           },
-        },
-        {
-          $group: {
-            _id: null,
-            total: {
-              $sum: {
-                $max: [
-                  {
-                    $subtract: ["$amount", "$paid"],
-                  },
-                  0,
-                ],
+          {
+            $group: {
+              _id: null,
+              total: {
+                $sum: {
+                  $max: [
+                    {
+                      $subtract: ["$amount", "$paid"],
+                    },
+                    0,
+                  ],
+                },
               },
             },
           },
-        },
-      ]),
+        ]),
 
-      // ------------------------------------------------------
-      // TOTAL TRANSACTIONS
-      // ------------------------------------------------------
+        // ------------------------------------------------------
+        // TOTAL TRANSACTIONS
+        // ------------------------------------------------------
 
-      Transaction.aggregate([
-        {
-          $group: {
-            _id: null,
-            total: {
-              $sum: "$amount",
+        Transaction.aggregate([
+          {
+            $group: {
+              _id: null,
+              total: {
+                $sum: "$amount",
+              },
             },
           },
+        ]),
+
+        // ------------------------------------------------------
+        // RECENT TRANSACTIONS
+        // ------------------------------------------------------
+
+        Transaction.find()
+          .populate("partyId", "name")
+          .sort({
+            createdAt: -1,
+          })
+          .limit(6)
+          .lean(),
+      ]);
+
+      // ========================================================
+      // RESPONSE
+      // ========================================================
+
+      return res.json({
+        success: true,
+
+        stats: {
+          sale: sale[0]?.total || 0,
+          purchase: purchase[0]?.total || 0,
+          service: service[0]?.total || 0,
+          expense: expense[0]?.total || 0,
+
+          partyCount: parties,
+
+          paid: paid[0]?.total || 0,
+
+          pending: pending[0]?.total || 0,
+
+          transactionTotal:
+            allTransactionAmount[0]?.total || 0,
         },
-      ]),
 
-      // ------------------------------------------------------
-      // RECENT TRANSACTIONS
-      // ------------------------------------------------------
+        recent: recent.map((x) => ({
+          id: x._id,
+          type: x.type,
+          partyName: x.partyId?.name || "Unknown",
+          amount: x.amount,
+          status: x.paymentStatus,
+          date: x.createdAt,
+        })),
+      });
+    } catch (error) {
+      console.error("Dashboard error:", error);
 
-      Transaction.find()
-        .populate("partyId", "name")
-        .sort({
-          createdAt: -1,
-        })
-        .limit(6)
-        .lean(),
-    ]);
-
-    // ========================================================
-    // RESPONSE
-    // ========================================================
-
-    return res.json({
-      success: true,
-
-      stats: {
-        sale: sale[0]?.total || 0,
-        purchase: purchase[0]?.total || 0,
-        service: service[0]?.total || 0,
-        expense: expense[0]?.total || 0,
-
-        partyCount: parties,
-
-        paid: paid[0]?.total || 0,
-
-        pending: pending[0]?.total || 0,
-
-        transactionTotal: allTransactionAmount[0]?.total || 0,
-      },
-
-      recent: recent.map((x) => ({
-        id: x._id,
-        type: x.type,
-        partyName: x.partyId?.name || "Unknown",
-        amount: x.amount,
-        status: x.paymentStatus,
-        date: x.createdAt,
-      })),
-    });
-  } catch (error) {
-    console.error("Dashboard error:", error);
-
-    return res.status(500).json({
-      success: false,
-      message: "Unable to load dashboard",
-    });
-  }
-});
+      return res.status(500).json({
+        success: false,
+        message: "Unable to load dashboard",
+      });
+    }
+  },
+);
 
 // ============================================================
 // HEALTH CHECK
