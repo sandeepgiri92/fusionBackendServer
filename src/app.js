@@ -1,3 +1,4 @@
+
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
@@ -130,28 +131,22 @@ app.use("/api/admin", adminLoginRouter);
 app.use("/api/mobile-auth", mobileAuthRoutes);
 
 // ============================================================
-// PROTECTED PARTY ROUTES
+// HEALTH CHECK
 // ============================================================
-// WEB AUTH
-// Cookie:
-// accessToken
-// ============================================================
-
-app.use("/api/admin", authMiddleware, partiesRouter);
-
-// ============================================================
-// PROTECTED ENTRY + EXPENSE + STOCK ROUTES
-// ============================================================
-// WEB AUTH
+// PUBLIC ROUTE
+//
+// IMPORTANT:
+// This MUST be before the generic protected /api middleware
+// below. Otherwise authMiddleware will intercept this request.
 // ============================================================
 
-app.use(
-  "/api",
-  authMiddleware,
-  entryRouter,
-  expenseRouter,
-  stockRouter,
-);
+app.get("/api/health", (req, res) => {
+  return res.json({
+    success: true,
+    status: "ok",
+    timestamp: new Date(),
+  });
+});
 
 // ============================================================
 // DASHBOARD AUTH
@@ -175,9 +170,6 @@ const dashboardAuthMiddleware = (req, res, next) => {
   // ----------------------------------------------------------
   // MOBILE REQUEST
   // ----------------------------------------------------------
-  // If Authorization Bearer token exists,
-  // use mobile JWT authentication.
-  // ----------------------------------------------------------
 
   if (
     req.headers.authorization &&
@@ -189,14 +181,22 @@ const dashboardAuthMiddleware = (req, res, next) => {
   // ----------------------------------------------------------
   // WEB REQUEST
   // ----------------------------------------------------------
-  // Existing website continues using cookie authentication.
-  // ----------------------------------------------------------
 
   return authMiddleware(req, res, next);
 };
 
 // ============================================================
 // DASHBOARD
+// ============================================================
+// IMPORTANT:
+//
+// Dashboard MUST be before:
+//
+// app.use("/api", authMiddleware, ...)
+//
+// Otherwise the generic cookie auth middleware will intercept
+// mobile requests before dashboardAuthMiddleware gets a chance
+// to check the Bearer token.
 // ============================================================
 
 app.get(
@@ -406,16 +406,32 @@ app.get(
 );
 
 // ============================================================
-// HEALTH CHECK
+// PROTECTED PARTY ROUTES
+// ============================================================
+// WEB AUTH
+// Cookie:
+// accessToken
 // ============================================================
 
-app.get("/api/health", (req, res) => {
-  return res.json({
-    success: true,
-    status: "ok",
-    timestamp: new Date(),
-  });
-});
+app.use("/api/admin", authMiddleware, partiesRouter);
+
+// ============================================================
+// PROTECTED ENTRY + EXPENSE + STOCK ROUTES
+// ============================================================
+// WEB AUTH
+//
+// IMPORTANT:
+// This remains unchanged.
+// It comes AFTER /api/health and /api/dashboard.
+// ============================================================
+
+app.use(
+  "/api",
+  authMiddleware,
+  entryRouter,
+  expenseRouter,
+  stockRouter,
+);
 
 // ============================================================
 // ROOT
@@ -461,3 +477,4 @@ app.use((err, req, res, next) => {
 // ============================================================
 
 module.exports = app;
+
