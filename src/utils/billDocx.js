@@ -1,3 +1,4 @@
+```js
 // ============================================================
 // FUSION ENTERPRISES — Word Bill Generator (template based)
 // ------------------------------------------------------------
@@ -5,7 +6,7 @@
 // entry data WITHOUT changing the format in any way:
 //   - Invoice No.  -> entry.invoiceNo
 //   - Date         -> entry.date (dd/mm/yyyy)
-//   - M/s.         -> party name
+//   - M/s.         -> party name (UNDERLINED)
 //   - Address.     -> party address (blank if not present)
 //   - Table row    -> Sr No: 1 | Particulars: product - serial
 //                     (+ warranty remark line only if remarks
@@ -39,10 +40,11 @@ const escXml = (s) =>
 
 const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
 
-// compact Indian money format: 12500 -> "12,500" | 12500.5 -> "3,450.50"
+// compact Indian money format: 12500 -> "12,500" | 12500.5 -> "12,500.50"
 const fmtAmt = (n) => {
   const num = Number(n || 0);
   const hasPaise = Math.round(num * 100) % 100 !== 0;
+
   return num.toLocaleString("en-IN", {
     minimumFractionDigits: hasPaise ? 2 : 0,
     maximumFractionDigits: 2,
@@ -52,9 +54,12 @@ const fmtAmt = (n) => {
 // dd/mm/yyyy
 const fmtDate = (d) => {
   const dt = new Date(d);
+
   if (Number.isNaN(dt.getTime())) return "";
+
   const dd = String(dt.getDate()).padStart(2, "0");
   const mm = String(dt.getMonth() + 1).padStart(2, "0");
+
   return `${dd}/${mm}/${dt.getFullYear()}`;
 };
 
@@ -82,6 +87,7 @@ const ONES = [
   "Eighteen",
   "Nineteen",
 ];
+
 const TENS = [
   "",
   "",
@@ -103,55 +109,80 @@ const twoDigits = (n) =>
 const threeDigits = (n) => {
   const h = Math.floor(n / 100);
   const r = n % 100;
+
   let s = "";
+
   if (h) s += ONES[h] + " Hundred";
+
   if (r) s += (h ? " " : "") + twoDigits(r);
+
   return s;
 };
 
 const numberToWordsIndian = (num) => {
   num = Math.floor(Number(num) || 0);
+
   if (num === 0) return "Zero";
+
   const crore = Math.floor(num / 10000000);
   num %= 10000000;
+
   const lakh = Math.floor(num / 100000);
   num %= 100000;
+
   const thousand = Math.floor(num / 1000);
   num %= 1000;
+
   const hundred = num;
+
   let s = "";
+
   if (crore) s += threeDigits(crore) + " Crore ";
   if (lakh) s += twoDigits(lakh) + " Lakh ";
   if (thousand) s += twoDigits(thousand) + " Thousand ";
   if (hundred) s += threeDigits(hundred);
+
   return s.trim();
 };
 
 const amountInWords = (n) => {
   const num = Number(n || 0);
+
   const rupees = Math.floor(num);
   const paise = Math.round((num - rupees) * 100);
+
   let w = numberToWordsIndian(rupees) + " Rupees";
-  if (paise > 0) w += " and " + numberToWordsIndian(paise) + " Paise";
+
+  if (paise > 0) {
+    w += " and " + numberToWordsIndian(paise) + " Paise";
+  }
+
   return w + " Only";
 };
 
-// ---------- run builders (match template fonts/colors) ----------
+// ---------- run builders ----------
 
-// body text runs (Invoice No / Date / M/s / Address) — inherits BodyText style
-// (long values can pass an explicit sz; see calls below)
-const bodyRun = (text, sz) =>
-  `<w:r><w:rPr><w:color w:val="030303"/>${sz ? `<w:sz w:val="${sz}"/>` : ""}</w:rPr><w:t xml:space="preserve">${escXml(text)}</w:t></w:r>`;
+// body text runs
+// underline = true only where required (Party Name)
+const bodyRun = (text, sz, underline = false) =>
+  `<w:r><w:rPr><w:color w:val="030303"/>${
+    sz ? `<w:sz w:val="${sz}"/>` : ""
+  }${
+    underline ? '<w:u w:val="single"/>' : ""
+  }</w:rPr><w:t xml:space="preserve">${escXml(text)}</w:t></w:r>`;
 
-// size for a body value so it stays on its own line (fixed table position)
+// size for a body value so it stays on its own line
 const fitSize = (text, softLimit) => {
   const len = String(text || "").length;
-  if (len <= softLimit) return undefined; // inherit 14pt
-  if (len <= softLimit + 3) return 24; // 12pt
-  return 20; // 10pt
+
+  if (len <= softLimit) return undefined;
+
+  if (len <= softLimit + 3) return 24;
+
+  return 20;
 };
 
-// table cell runs — size chosen so the value fits the narrow column on one line
+// table cell runs
 const CELL_W = {
   sr: "1104",
   part: "3774",
@@ -159,31 +190,39 @@ const CELL_W = {
   rate: "948",
   amount: "1416",
 };
+
 const cellSz = (text) => {
   const len = String(text || "").length;
-  if (len <= 6) return 30; // 15pt
-  if (len <= 8) return 26; // 13pt
-  if (len <= 10) return 22; // 11pt
-  return 20; // 10pt
-};
-const cellRun = (text, sz) => {
-  const s = sz || cellSz(text);
-  return `<w:r><w:rPr><w:color w:val="030303"/><w:sz w:val="${s}"/></w:rPr><w:t xml:space="preserve">${escXml(text)}</w:t></w:r>`;
+
+  if (len <= 6) return 30;
+  if (len <= 8) return 26;
+  if (len <= 10) return 22;
+
+  return 20;
 };
 
-// multi-line particulars (line1 / line2) using a soft line break
+const cellRun = (text, sz) => {
+  const s = sz || cellSz(text);
+
+  return `<w:r><w:rPr><w:color w:val="030303"/><w:sz w:val="${s}"/></w:rPr><w:t xml:space="preserve">${escXml(
+    text,
+  )}</w:t></w:r>`;
+};
+
+// multi-line particulars
 const cellRunsMulti = (lines) =>
   lines
     .filter((l) => l !== "")
     .map((l, i) => {
       const br = i > 0 ? "<w:br/>" : "";
-      return `<w:r><w:rPr><w:color w:val="030303"/><w:sz w:val="30"/></w:rPr>${br}<w:t xml:space="preserve">${escXml(l)}</w:t></w:r>`;
+
+      return `<w:r><w:rPr><w:color w:val="030303"/><w:sz w:val="30"/></w:rPr>${br}<w:t xml:space="preserve">${escXml(
+        l,
+      )}</w:t></w:r>`;
     })
     .join("");
 
-// "Rs. in Words" value — auto font size keeps the text on a single line
-// (the template's words cell leaves ~3510 twips after the 14pt label;
-// the surrounding textbox has a fixed height, so the row must NOT wrap)
+// "Rs. in Words" value
 const TNR = {
   " ": 250,
   "/": 278,
@@ -245,55 +284,85 @@ const TNR = {
   y: 500,
   z: 444,
 };
+
 const estWidthTw = (text, pt) => {
   let em = 0;
-  for (const ch of String(text)) em += TNR[ch] !== undefined ? TNR[ch] : 500; // digits = 500 in Times
+
+  for (const ch of String(text)) {
+    em += TNR[ch] !== undefined ? TNR[ch] : 500;
+  }
+
   return (em / 1000) * pt * 20;
 };
+
 const wordsSizeHalfPt = (text) => {
-  const AVAIL = 3510; // twips available after "Rs. in Words:" label
+  const AVAIL = 3510;
+
   for (const pt of [12, 11, 10, 9, 8]) {
-    if (estWidthTw(text, pt) * 1.04 <= AVAIL) return pt * 2;
+    if (estWidthTw(text, pt) * 1.04 <= AVAIL) {
+      return pt * 2;
+    }
   }
-  return 16; // 8pt — very long amounts; wraps only in extreme cases
+
+  return 16;
 };
+
 const wordsRun = (text) =>
-  `<w:r><w:rPr><w:color w:val="030303"/><w:sz w:val="${wordsSizeHalfPt(text)}"/></w:rPr><w:t xml:space="preserve"> ${escXml(text)}</w:t></w:r>`;
+  `<w:r><w:rPr><w:color w:val="030303"/><w:sz w:val="${wordsSizeHalfPt(
+    text,
+  )}"/></w:rPr><w:t xml:space="preserve"> ${escXml(
+    text,
+  )}</w:t></w:r>`;
 
 // ---------- low level XML surgery ----------
 
-// insert `snippet` right after the first occurrence of `anchor` at/after `from`
+// insert snippet right after first occurrence of anchor
 function insertAfter(xml, anchor, snippet, from = 0) {
   const i = xml.indexOf(anchor, from);
+
   if (i === -1) return null;
+
   const pos = i + anchor.length;
+
   return xml.slice(0, pos) + snippet + xml.slice(pos);
 }
 
-// For a given row (identified by its unique trHeight), return [start,end] of <w:tr ...> ... </w:tr>
+// For a given row
 function rowBounds(xml, trHeightMarker) {
   const marker = xml.indexOf(trHeightMarker);
+
   if (marker === -1) return null;
+
   const start = xml.lastIndexOf("<w:tr ", marker);
   const end = xml.indexOf("</w:tr>", marker) + "</w:tr>".length;
+
   if (start === -1 || end === -1) return null;
+
   return [start, end];
 }
 
-// inside a row string, find the <w:tc> block whose tcPr declares width `w`
+// inside a row string, find cell by width
 function cellBounds(row, width, from = 0) {
   const needle = `<w:tcW w:w="${width}"`;
+
   const i = row.indexOf(needle, from);
+
   if (i === -1) return null;
+
   const start = row.lastIndexOf("<w:tc>", i);
   const end = row.indexOf("</w:tc>", i) + "</w:tc>".length;
+
   return [start, end];
 }
 
-// fill one empty cell (its single paragraph has <w:pPr>...</w:pPr>) with runs
-// returns { row: newRowString, from: insertionPos } so callers can chain safely
-
-const addCellPadding = (row, cellStart, cellEnd, left = 70, right = 70) => {
+// add cell padding
+const addCellPadding = (
+  row,
+  cellStart,
+  cellEnd,
+  left = 70,
+  right = 70,
+) => {
   const cell = row.slice(cellStart, cellEnd);
 
   const tcPrStart = cell.indexOf("<w:tcPr>");
@@ -314,9 +383,16 @@ const addCellPadding = (row, cellStart, cellEnd, left = 70, right = 70) => {
 
   const insertPos = tcPrStart + "<w:tcPr>".length;
 
-  const newCell = cell.slice(0, insertPos) + paddingXml + cell.slice(insertPos);
+  const newCell =
+    cell.slice(0, insertPos) +
+    paddingXml +
+    cell.slice(insertPos);
 
-  return row.slice(0, cellStart) + newCell + row.slice(cellEnd);
+  return (
+    row.slice(0, cellStart) +
+    newCell +
+    row.slice(cellEnd)
+  );
 };
 
 function fillCell(row, width, runsXml, from = 0) {
@@ -330,16 +406,12 @@ function fillCell(row, width, runsXml, from = 0) {
     return null;
   }
 
-  /*
-   * Cell ke andar text ko table border se
-   * thoda andar rakhenge.
-   */
   const padding = {
-    1104: { left: 70, right: 70 }, // Sr. No.
-    3774: { left: 100, right: 100 }, // Particulars
-    654: { left: 70, right: 70 }, // Qty
-    948: { left: 70, right: 70 }, // Rate
-    1416: { left: 70, right: 70 }, // Amount
+    1104: { left: 70, right: 70 },
+    3774: { left: 100, right: 100 },
+    654: { left: 70, right: 70 },
+    948: { left: 70, right: 70 },
+    1416: { left: 70, right: 70 },
   };
 
   const pad = padding[width] || {
@@ -350,29 +422,38 @@ function fillCell(row, width, runsXml, from = 0) {
   const cellStart = b[0];
   const cellEnd = b[1];
 
-  /*
-   * Padding add karo.
-   */
-  let updatedRow = addCellPadding(row, cellStart, cellEnd, pad.left, pad.right);
+  let updatedRow = addCellPadding(
+    row,
+    cellStart,
+    cellEnd,
+    pad.left,
+    pad.right,
+  );
 
-  /*
-   * Padding add hone ke baad cell boundaries dobara
-   * calculate karna zaroori hai.
-   */
   const newBounds = cellBounds(updatedRow, width, from);
 
   if (!newBounds) return null;
 
-  const newPPrEnd = updatedRow.indexOf("</w:pPr>", newBounds[0]);
+  const newPPrEnd = updatedRow.indexOf(
+    "</w:pPr>",
+    newBounds[0],
+  );
 
-  if (newPPrEnd === -1 || newPPrEnd > newBounds[1]) {
+  if (
+    newPPrEnd === -1 ||
+    newPPrEnd > newBounds[1]
+  ) {
     return null;
   }
 
-  const pos = newPPrEnd + "</w:pPr>".length;
+  const pos =
+    newPPrEnd + "</w:pPr>".length;
 
   return {
-    row: updatedRow.slice(0, pos) + runsXml + updatedRow.slice(pos),
+    row:
+      updatedRow.slice(0, pos) +
+      runsXml +
+      updatedRow.slice(pos),
 
     from: pos,
   };
@@ -384,10 +465,15 @@ function buildBillData({ type, party, entry }) {
   const isService = String(type) === "Service";
   const amount = round2(entry?.amount || 0);
 
-  // qty/rate: new entries store them; old entries fall back to 1 x amount
-  const qty = Number(entry?.qty) > 0 ? Number(entry.qty) : 1;
+  const qty =
+    Number(entry?.qty) > 0
+      ? Number(entry.qty)
+      : 1;
+
   const rate =
-    Number(entry?.rate) > 0 ? round2(entry.rate) : round2(amount / qty);
+    Number(entry?.rate) > 0
+      ? round2(entry.rate)
+      : round2(amount / qty);
 
   const invoiceNo = isService
     ? String(
@@ -398,9 +484,11 @@ function buildBillData({ type, party, entry }) {
       )
     : String(entry?.invoiceNo || "");
 
-  // particulars: "product name - serial no" (sale) / service detail
   const particulars = isService
-    ? String(entry?.serviceDetail || "Service charges").trim()
+    ? String(
+        entry?.serviceDetail ||
+          "Service charges",
+      ).trim()
     : [
         String(entry?.productName || "").trim(),
         String(entry?.serialNo || "").trim(),
@@ -408,17 +496,34 @@ function buildBillData({ type, party, entry }) {
         .filter(Boolean)
         .join(" - ");
 
-  // warranty remark: only shown when remarks actually mention warranty
-  const remarks = String(entry?.remarks || "").trim();
-  const warrantyLine = /warrant/i.test(remarks) ? remarks : "";
+  const remarks = String(
+    entry?.remarks || "",
+  ).trim();
+
+  const warrantyLine =
+    /warrant/i.test(remarks)
+      ? remarks
+      : "";
 
   return {
     isService,
     invoiceNo,
     date: fmtDate(entry?.date),
-    partyName: String(party?.name || "").trim(),
-    address: String(party?.address || "").trim(),
-    particularsLines: [particulars, warrantyLine],
+
+    // Party Name
+    partyName: String(
+      party?.name || "",
+    ).trim(),
+
+    address: String(
+      party?.address || "",
+    ).trim(),
+
+    particularsLines: [
+      particulars,
+      warrantyLine,
+    ],
+
     qty: String(qty),
     rate: fmtAmt(rate),
     amount: fmtAmt(amount),
@@ -430,140 +535,330 @@ function buildBillData({ type, party, entry }) {
 // ---------- template filling ----------
 
 async function fillTemplate(data) {
-  const templateBuffer = fs.readFileSync(TEMPLATE_PATH);
-  const zip = await JSZip.loadAsync(templateBuffer);
-  let xml = await zip.file("word/document.xml").async("string");
+  const templateBuffer =
+    fs.readFileSync(TEMPLATE_PATH);
+
+  const zip =
+    await JSZip.loadAsync(templateBuffer);
+
+  let xml =
+    await zip
+      .file("word/document.xml")
+      .async("string");
 
   // ----- 1) Invoice No. -----
-  let p = xml.indexOf(">Invoice No</w:t>");
-  if (p === -1) throw new Error("Template anchor missing: Invoice No");
+
+  let p =
+    xml.indexOf(">Invoice No</w:t>");
+
+  if (p === -1) {
+    throw new Error(
+      "Template anchor missing: Invoice No",
+    );
+  }
+
   xml = insertAfter(
     xml,
     '<w:t xml:space="preserve">. </w:t></w:r>',
-    bodyRun(data.invoiceNo, fitSize(data.invoiceNo, 12)),
+    bodyRun(
+      data.invoiceNo,
+      fitSize(data.invoiceNo, 12),
+    ),
     p,
   );
 
-  // ----- 2) Date (insert after the space run that follows "Date:") -----
-  // 12pt value so "Date: dd/mm/yyyy" always fits on the first line
-  p = xml.indexOf(">Date:</w:t>");
-  if (p === -1) throw new Error("Template anchor missing: Date");
-  const dateRunEnd = xml.indexOf("</w:r>", p) + "</w:r>".length; // end of "Date:" run
-  const spaceRunEnd = xml.indexOf("</w:r>", dateRunEnd) + "</w:r>".length; // end of " " run
-  xml =
-    xml.slice(0, spaceRunEnd) + bodyRun(data.date, 24) + xml.slice(spaceRunEnd);
+  // ----- 2) Date -----
 
-  // ----- 3) M/s. (party name, end of that paragraph) -----
+  p = xml.indexOf(">Date:</w:t>");
+
+  if (p === -1) {
+    throw new Error(
+      "Template anchor missing: Date",
+    );
+  }
+
+  const dateRunEnd =
+    xml.indexOf("</w:r>", p) +
+    "</w:r>".length;
+
+  const spaceRunEnd =
+    xml.indexOf(
+      "</w:r>",
+      dateRunEnd,
+    ) +
+    "</w:r>".length;
+
+  xml =
+    xml.slice(0, spaceRunEnd) +
+    bodyRun(data.date, 24) +
+    xml.slice(spaceRunEnd);
+
+  // ----- 3) M/s. — PARTY NAME -----
+  // Party Name ko underline kiya gaya hai.
   p = xml.indexOf(">M/s.</w:t>");
-  if (p === -1) throw new Error("Template anchor missing: M/s");
+
+  if (p === -1) {
+    throw new Error(
+      "Template anchor missing: M/s",
+    );
+  }
+
   xml = insertAfter(
     xml,
     '<w:t xml:space="preserve"> </w:t></w:r>',
-    bodyRun(data.partyName, fitSize(data.partyName, 50)),
+
+    // IMPORTANT:
+    // true = underline
+    bodyRun(
+      data.partyName,
+      fitSize(data.partyName, 50),
+      true,
+    ),
+
     p,
   );
 
-  // ----- 4) Address (only when present, otherwise stays blank) -----
+  // ----- 4) Address -----
+
   if (data.address) {
     p = xml.indexOf(">Address</w:t>");
+
     if (p !== -1) {
       xml = insertAfter(
         xml,
         '<w:t xml:space="preserve">. </w:t></w:r>',
-        bodyRun(data.address, fitSize(data.address, 55)),
+        bodyRun(
+          data.address,
+          fitSize(data.address, 55),
+        ),
         p,
       );
     }
   }
 
-  // ----- 5) Item row (appears 2x: drawing choice + fallback copy) -----
-  const ITEM_ROW = '<w:trHeight w:val="4638"/>';
+  // ----- 5) Item row -----
+
+  const ITEM_ROW =
+    '<w:trHeight w:val="4638"/>';
+
   let searchFrom = 0;
   let itemCount = 0;
+
   while (true) {
-    const marker = xml.indexOf(ITEM_ROW, searchFrom);
+    const marker =
+      xml.indexOf(
+        ITEM_ROW,
+        searchFrom,
+      );
+
     if (marker === -1) break;
-    const trStart = xml.lastIndexOf("<w:tr ", marker);
-    const trEnd = xml.indexOf("</w:tr>", marker) + "</w:tr>".length;
-    let row = xml.slice(trStart, trEnd);
+
+    const trStart =
+      xml.lastIndexOf(
+        "<w:tr ",
+        marker,
+      );
+
+    const trEnd =
+      xml.indexOf(
+        "</w:tr>",
+        marker,
+      ) +
+      "</w:tr>".length;
+
+    let row =
+      xml.slice(
+        trStart,
+        trEnd,
+      );
 
     let cursor = 0;
-    // Sr. No -> 1
-    let nb = fillCell(row, "1104", cellRun("1"), cursor);
+
+    // Sr. No
+    let nb = fillCell(
+      row,
+      "1104",
+      cellRun("1"),
+      cursor,
+    );
+
     if (nb) {
       row = nb.row;
       cursor = nb.from;
     }
-    // Particulars -> product - serial (+ warranty line)
-    nb = fillCell(row, "3774", cellRunsMulti(data.particularsLines), cursor);
+
+    // Particulars
+    nb = fillCell(
+      row,
+      "3774",
+      cellRunsMulti(
+        data.particularsLines,
+      ),
+      cursor,
+    );
+
     if (nb) {
       row = nb.row;
       cursor = nb.from;
     }
+
     // Qty
-    nb = fillCell(row, "654", cellRun(data.qty), cursor);
+    nb = fillCell(
+      row,
+      "654",
+      cellRun(data.qty),
+      cursor,
+    );
+
     if (nb) {
       row = nb.row;
       cursor = nb.from;
     }
+
     // Rate
-    nb = fillCell(row, "948", cellRun(data.rate), cursor);
+    nb = fillCell(
+      row,
+      "948",
+      cellRun(data.rate),
+      cursor,
+    );
+
     if (nb) {
       row = nb.row;
       cursor = nb.from;
     }
+
     // Amount
-    nb = fillCell(row, "1416", cellRun(data.amount), cursor);
+    nb = fillCell(
+      row,
+      "1416",
+      cellRun(data.amount),
+      cursor,
+    );
+
     if (nb) {
       row = nb.row;
       cursor = nb.from;
     }
 
-    xml = xml.slice(0, trStart) + row + xml.slice(trEnd);
-    itemCount += 1;
-    searchFrom = trStart + row.length;
-  }
-  if (itemCount === 0) throw new Error("Template anchor missing: item row");
+    xml =
+      xml.slice(0, trStart) +
+      row +
+      xml.slice(trEnd);
 
-  // ----- 6) Rs. in Words + Total row (appears 2x: choice + fallback) -----
-  // let the row grow if long amount-in-words needs a second line (prevents
-  // text/border overlap in every renderer)
+    itemCount += 1;
+
+    searchFrom =
+      trStart + row.length;
+  }
+
+  if (itemCount === 0) {
+    throw new Error(
+      "Template anchor missing: item row",
+    );
+  }
+
+  // ----- 6) Rs. in Words + Total row -----
+
   xml = xml
-    .split('<w:trHeight w:val="497"/>')
-    .join('<w:trHeight w:val="497" w:hRule="atLeast"/>');
-  const WORDS_ROW = '<w:trHeight w:val="497" w:hRule="atLeast"/>';
+    .split(
+      '<w:trHeight w:val="497"/>',
+    )
+    .join(
+      '<w:trHeight w:val="497" w:hRule="atLeast"/>',
+    );
+
+  const WORDS_ROW =
+    '<w:trHeight w:val="497" w:hRule="atLeast"/>';
+
   searchFrom = 0;
   let wordsCount = 0;
+
   while (true) {
-    const marker = xml.indexOf(WORDS_ROW, searchFrom);
+    const marker =
+      xml.indexOf(
+        WORDS_ROW,
+        searchFrom,
+      );
+
     if (marker === -1) break;
-    const trStart = xml.lastIndexOf("<w:tr ", marker);
-    const trEnd = xml.indexOf("</w:tr>", marker) + "</w:tr>".length;
-    let row = xml.slice(trStart, trEnd);
 
-    // words value right after the "Words:" label run
-    const label = ">Words:</w:t></w:r>";
-    const li = row.indexOf(label);
+    const trStart =
+      xml.lastIndexOf(
+        "<w:tr ",
+        marker,
+      );
+
+    const trEnd =
+      xml.indexOf(
+        "</w:tr>",
+        marker,
+      ) +
+      "</w:tr>".length;
+
+    let row =
+      xml.slice(
+        trStart,
+        trEnd,
+      );
+
+    // Words value
+    const label =
+      ">Words:</w:t></w:r>";
+
+    const li =
+      row.indexOf(label);
+
     if (li !== -1) {
-      const pos = li + label.length;
-      row = row.slice(0, pos) + wordsRun(data.words) + row.slice(pos);
+      const pos =
+        li + label.length;
+
+      row =
+        row.slice(0, pos) +
+        wordsRun(data.words) +
+        row.slice(pos);
     }
-    // total amount in the empty cell next to the "Total" label
-    const nb = fillCell(row, "1416", cellRun(data.total), 0);
-    if (nb) row = nb.row;
 
-    xml = xml.slice(0, trStart) + row + xml.slice(trEnd);
+    // Total amount
+    const nb = fillCell(
+      row,
+      "1416",
+      cellRun(data.total),
+      0,
+    );
+
+    if (nb) {
+      row = nb.row;
+    }
+
+    xml =
+      xml.slice(0, trStart) +
+      row +
+      xml.slice(trEnd);
+
     wordsCount += 1;
-    searchFrom = trStart + row.length;
-  }
-  if (wordsCount === 0)
-    throw new Error("Template anchor missing: words/total row");
 
-  zip.file("word/document.xml", xml);
+    searchFrom =
+      trStart + row.length;
+  }
+
+  if (wordsCount === 0) {
+    throw new Error(
+      "Template anchor missing: words/total row",
+    );
+  }
+
+  zip.file(
+    "word/document.xml",
+    xml,
+  );
+
   return zip.generateAsync({
     type: "nodebuffer",
     compression: "DEFLATE",
-    compressionOptions: { level: 6 },
+    compressionOptions: {
+      level: 6,
+    },
     mimeType:
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   });
@@ -571,16 +866,71 @@ async function fillTemplate(data) {
 
 // ---------- public API ----------
 
-async function generateBillDocx({ type, party, entry }) {
-  const data = buildBillData({ type, party, entry });
-  const buffer = await fillTemplate(data);
+async function generateBillDocx({
+  type,
+  party,
+  entry,
+}) {
+  const data =
+    buildBillData({
+      type,
+      party,
+      entry,
+    });
+
+  const buffer =
+    await fillTemplate(data);
+
   const fileBase = data.isService
-    ? `Service-Receipt-${data.invoiceNo || "SL"}`.replace(/[^\w.-]+/g, "-")
-    : `Invoice-${data.invoiceNo || String(entry?._id || "").slice(-8)}`.replace(
+    ? `Service-Receipt-${
+        data.invoiceNo || "SL"
+      }`.replace(
+        /[^\w.-]+/g,
+        "-",
+      )
+    : `Invoice-${
+        data.invoiceNo ||
+        String(entry?._id || "").slice(-8)
+      }`.replace(
         /[^\w.-]+/g,
         "-",
       );
-  return { buffer, fileName: `${fileBase}.docx`, data };
+
+  return {
+    buffer,
+    fileName: `${fileBase}.docx`,
+    data,
+  };
 }
 
-module.exports = { generateBillDocx, buildBillData, amountInWords };
+module.exports = {
+  generateBillDocx,
+  buildBillData,
+  amountInWords,
+};
+```
+
+**Change exactly ye hai:**
+
+```js
+bodyRun(
+  data.partyName,
+  fitSize(data.partyName, 50),
+  true,
+)
+```
+
+aur `bodyRun()` me:
+
+```js
+underline ? '<w:u w:val="single"/>' : ""
+```
+
+add hua hai.
+
+Isse output roughly aisa hoga:
+
+**M/s. ABC Enterprises**
+━━━━━━━━━━━━━━━━
+
+Sirf **ABC Enterprises** underline hoga, `M/s.` nahi.
