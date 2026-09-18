@@ -1,18 +1,19 @@
-```js
 // ============================================================
 // FUSION ENTERPRISES — Word Bill Generator (template based)
 // ------------------------------------------------------------
 // Fills the official bill template (bill-template.docx) with
 // entry data WITHOUT changing the format in any way:
+//
 //   - Invoice No.  -> entry.invoiceNo
 //   - Date         -> entry.date (dd/mm/yyyy)
 //   - M/s.         -> party name (UNDERLINED)
-//   - Address.     -> party address (blank if not present)
+//   - Address.     -> party address
 //   - Table row    -> Sr No: 1 | Particulars: product - serial
 //                     (+ warranty remark line only if remarks
 //                      contain "warranty") | Qty | Rate | Amount
 //   - Rs. in Words -> amount in words (Indian system)
 //   - Total        -> total amount
+//
 // Company header, borders, stamp & signature images remain
 // exactly as they are inside the template.
 // ============================================================
@@ -28,7 +29,9 @@ const TEMPLATE_PATH = path.join(
   "bill-template.docx",
 );
 
-// ---------- basic helpers ----------
+// ============================================================
+// BASIC HELPERS
+// ============================================================
 
 const escXml = (s) =>
   String(s ?? "")
@@ -38,12 +41,22 @@ const escXml = (s) =>
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&apos;");
 
-const round2 = (n) => Math.round(Number(n || 0) * 100) / 100;
+const round2 = (n) =>
+  Math.round(Number(n || 0) * 100) / 100;
 
-// compact Indian money format: 12500 -> "12,500" | 12500.5 -> "12,500.50"
+// ============================================================
+// MONEY FORMAT
+// ============================================================
+
+// 12500     -> "12,500"
+// 12500.5   -> "12,500.50"
+// 12500.55  -> "12,500.55"
+
 const fmtAmt = (n) => {
   const num = Number(n || 0);
-  const hasPaise = Math.round(num * 100) % 100 !== 0;
+
+  const hasPaise =
+    Math.round(num * 100) % 100 !== 0;
 
   return num.toLocaleString("en-IN", {
     minimumFractionDigits: hasPaise ? 2 : 0,
@@ -51,19 +64,39 @@ const fmtAmt = (n) => {
   });
 };
 
+// ============================================================
+// DATE FORMAT
+// ============================================================
+
 // dd/mm/yyyy
+
 const fmtDate = (d) => {
   const dt = new Date(d);
 
-  if (Number.isNaN(dt.getTime())) return "";
+  if (Number.isNaN(dt.getTime())) {
+    return "";
+  }
 
-  const dd = String(dt.getDate()).padStart(2, "0");
-  const mm = String(dt.getMonth() + 1).padStart(2, "0");
+  const dd = String(
+    dt.getDate(),
+  ).padStart(2, "0");
 
-  return `${dd}/${mm}/${dt.getFullYear()}`;
+  const mm = String(
+    dt.getMonth() + 1,
+  ).padStart(2, "0");
+
+  return (
+    dd +
+    "/" +
+    mm +
+    "/" +
+    dt.getFullYear()
+  );
 };
 
-// ---------- Indian number to words ----------
+// ============================================================
+// INDIAN NUMBER TO WORDS
+// ============================================================
 
 const ONES = [
   "",
@@ -104,7 +137,10 @@ const TENS = [
 const twoDigits = (n) =>
   n < 20
     ? ONES[n]
-    : TENS[Math.floor(n / 10)] + (n % 10 ? " " + ONES[n % 10] : "");
+    : TENS[Math.floor(n / 10)] +
+      (n % 10
+        ? " " + ONES[n % 10]
+        : "");
 
 const threeDigits = (n) => {
   const h = Math.floor(n / 100);
@@ -112,9 +148,15 @@ const threeDigits = (n) => {
 
   let s = "";
 
-  if (h) s += ONES[h] + " Hundred";
+  if (h) {
+    s += ONES[h] + " Hundred";
+  }
 
-  if (r) s += (h ? " " : "") + twoDigits(r);
+  if (r) {
+    s +=
+      (h ? " " : "") +
+      twoDigits(r);
+  }
 
   return s;
 };
@@ -122,25 +164,53 @@ const threeDigits = (n) => {
 const numberToWordsIndian = (num) => {
   num = Math.floor(Number(num) || 0);
 
-  if (num === 0) return "Zero";
+  if (num === 0) {
+    return "Zero";
+  }
 
-  const crore = Math.floor(num / 10000000);
+  const crore = Math.floor(
+    num / 10000000,
+  );
+
   num %= 10000000;
 
-  const lakh = Math.floor(num / 100000);
+  const lakh = Math.floor(
+    num / 100000,
+  );
+
   num %= 100000;
 
-  const thousand = Math.floor(num / 1000);
+  const thousand = Math.floor(
+    num / 1000,
+  );
+
   num %= 1000;
 
   const hundred = num;
 
   let s = "";
 
-  if (crore) s += threeDigits(crore) + " Crore ";
-  if (lakh) s += twoDigits(lakh) + " Lakh ";
-  if (thousand) s += twoDigits(thousand) + " Thousand ";
-  if (hundred) s += threeDigits(hundred);
+  if (crore) {
+    s +=
+      threeDigits(crore) +
+      " Crore ";
+  }
+
+  if (lakh) {
+    s +=
+      twoDigits(lakh) +
+      " Lakh ";
+  }
+
+  if (thousand) {
+    s +=
+      twoDigits(thousand) +
+      " Thousand ";
+  }
+
+  if (hundred) {
+    s += threeDigits(hundred);
+  }
 
   return s.trim();
 };
@@ -149,40 +219,87 @@ const amountInWords = (n) => {
   const num = Number(n || 0);
 
   const rupees = Math.floor(num);
-  const paise = Math.round((num - rupees) * 100);
 
-  let w = numberToWordsIndian(rupees) + " Rupees";
+  const paise = Math.round(
+    (num - rupees) * 100,
+  );
+
+  let w =
+    numberToWordsIndian(rupees) +
+    " Rupees";
 
   if (paise > 0) {
-    w += " and " + numberToWordsIndian(paise) + " Paise";
+    w +=
+      " and " +
+      numberToWordsIndian(paise) +
+      " Paise";
   }
 
   return w + " Only";
 };
 
-// ---------- run builders ----------
+// ============================================================
+// RUN BUILDERS
+// ============================================================
 
-// body text runs
-// underline = true only where required (Party Name)
-const bodyRun = (text, sz, underline = false) =>
-  `<w:r><w:rPr><w:color w:val="030303"/>${
-    sz ? `<w:sz w:val="${sz}"/>` : ""
-  }${
-    underline ? '<w:u w:val="single"/>' : ""
-  }</w:rPr><w:t xml:space="preserve">${escXml(text)}</w:t></w:r>`;
+// ------------------------------------------------------------
+// Body text runs
+//
+// underline = true only where required.
+// Currently used only for Party Name.
+//
+// Example:
+// bodyRun("ABC Enterprises", 24, true)
+//
+// Result:
+// ABC Enterprises -> underlined
+// ------------------------------------------------------------
 
-// size for a body value so it stays on its own line
-const fitSize = (text, softLimit) => {
-  const len = String(text || "").length;
+const bodyRun = (
+  text,
+  sz,
+  underline = false,
+) => {
+  const sizeXml = sz
+    ? `<w:sz w:val="${sz}"/>`
+    : "";
 
-  if (len <= softLimit) return undefined;
+  const underlineXml = underline
+    ? '<w:u w:val="single"/>'
+    : "";
 
-  if (len <= softLimit + 3) return 24;
+  return `<w:r><w:rPr><w:color w:val="030303"/>${sizeXml}${underlineXml}</w:rPr><w:t xml:space="preserve">${escXml(
+    text,
+  )}</w:t></w:r>`;
+};
+
+// ------------------------------------------------------------
+// Size for body value so it stays on its own line
+// ------------------------------------------------------------
+
+const fitSize = (
+  text,
+  softLimit,
+) => {
+  const len = String(
+    text || "",
+  ).length;
+
+  if (len <= softLimit) {
+    return undefined;
+  }
+
+  if (len <= softLimit + 3) {
+    return 24;
+  }
 
   return 20;
 };
 
-// table cell runs
+// ============================================================
+// TABLE CELL HELPERS
+// ============================================================
+
 const CELL_W = {
   sr: "1104",
   part: "3774",
@@ -192,29 +309,51 @@ const CELL_W = {
 };
 
 const cellSz = (text) => {
-  const len = String(text || "").length;
+  const len = String(
+    text || "",
+  ).length;
 
-  if (len <= 6) return 30;
-  if (len <= 8) return 26;
-  if (len <= 10) return 22;
+  if (len <= 6) {
+    return 30;
+  }
+
+  if (len <= 8) {
+    return 26;
+  }
+
+  if (len <= 10) {
+    return 22;
+  }
 
   return 20;
 };
 
-const cellRun = (text, sz) => {
-  const s = sz || cellSz(text);
+const cellRun = (
+  text,
+  sz,
+) => {
+  const s =
+    sz || cellSz(text);
 
   return `<w:r><w:rPr><w:color w:val="030303"/><w:sz w:val="${s}"/></w:rPr><w:t xml:space="preserve">${escXml(
     text,
   )}</w:t></w:r>`;
 };
 
-// multi-line particulars
-const cellRunsMulti = (lines) =>
+// ============================================================
+// MULTI-LINE PARTICULARS
+// ============================================================
+
+const cellRunsMulti = (
+  lines,
+) =>
   lines
     .filter((l) => l !== "")
     .map((l, i) => {
-      const br = i > 0 ? "<w:br/>" : "";
+      const br =
+        i > 0
+          ? "<w:br/>"
+          : "";
 
       return `<w:r><w:rPr><w:color w:val="030303"/><w:sz w:val="30"/></w:rPr>${br}<w:t xml:space="preserve">${escXml(
         l,
@@ -222,7 +361,10 @@ const cellRunsMulti = (lines) =>
     })
     .join("");
 
-// "Rs. in Words" value
+// ============================================================
+// "Rs. in Words" VALUE
+// ============================================================
+
 const TNR = {
   " ": 250,
   "/": 278,
@@ -231,6 +373,7 @@ const TNR = {
   "-": 333,
   "&": 778,
   "'": 180,
+
   A: 722,
   B: 667,
   C: 667,
@@ -257,6 +400,7 @@ const TNR = {
   X: 722,
   Y: 722,
   Z: 611,
+
   a: 444,
   b: 500,
   c: 444,
@@ -285,21 +429,43 @@ const TNR = {
   z: 444,
 };
 
-const estWidthTw = (text, pt) => {
+const estWidthTw = (
+  text,
+  pt,
+) => {
   let em = 0;
 
   for (const ch of String(text)) {
-    em += TNR[ch] !== undefined ? TNR[ch] : 500;
+    em +=
+      TNR[ch] !== undefined
+        ? TNR[ch]
+        : 500;
   }
 
-  return (em / 1000) * pt * 20;
+  return (
+    (em / 1000) *
+    pt *
+    20
+  );
 };
 
-const wordsSizeHalfPt = (text) => {
+const wordsSizeHalfPt = (
+  text,
+) => {
   const AVAIL = 3510;
 
-  for (const pt of [12, 11, 10, 9, 8]) {
-    if (estWidthTw(text, pt) * 1.04 <= AVAIL) {
+  for (const pt of [
+    12,
+    11,
+    10,
+    9,
+    8,
+  ]) {
+    if (
+      estWidthTw(text, pt) *
+        1.04 <=
+      AVAIL
+    ) {
       return pt * 2;
     }
   }
@@ -307,55 +473,127 @@ const wordsSizeHalfPt = (text) => {
   return 16;
 };
 
-const wordsRun = (text) =>
+const wordsRun = (
+  text,
+) =>
   `<w:r><w:rPr><w:color w:val="030303"/><w:sz w:val="${wordsSizeHalfPt(
     text,
   )}"/></w:rPr><w:t xml:space="preserve"> ${escXml(
     text,
   )}</w:t></w:r>`;
 
-// ---------- low level XML surgery ----------
+// ============================================================
+// LOW LEVEL XML SURGERY
+// ============================================================
 
-// insert snippet right after first occurrence of anchor
-function insertAfter(xml, anchor, snippet, from = 0) {
-  const i = xml.indexOf(anchor, from);
+// Insert snippet right after first occurrence of anchor.
 
-  if (i === -1) return null;
+function insertAfter(
+  xml,
+  anchor,
+  snippet,
+  from = 0,
+) {
+  const i = xml.indexOf(
+    anchor,
+    from,
+  );
 
-  const pos = i + anchor.length;
+  if (i === -1) {
+    return null;
+  }
 
-  return xml.slice(0, pos) + snippet + xml.slice(pos);
+  const pos =
+    i + anchor.length;
+
+  return (
+    xml.slice(0, pos) +
+    snippet +
+    xml.slice(pos)
+  );
 }
 
-// For a given row
-function rowBounds(xml, trHeightMarker) {
-  const marker = xml.indexOf(trHeightMarker);
+// ============================================================
+// ROW BOUNDS
+// ============================================================
 
-  if (marker === -1) return null;
+function rowBounds(
+  xml,
+  trHeightMarker,
+) {
+  const marker =
+    xml.indexOf(
+      trHeightMarker,
+    );
 
-  const start = xml.lastIndexOf("<w:tr ", marker);
-  const end = xml.indexOf("</w:tr>", marker) + "</w:tr>".length;
+  if (marker === -1) {
+    return null;
+  }
 
-  if (start === -1 || end === -1) return null;
+  const start =
+    xml.lastIndexOf(
+      "<w:tr ",
+      marker,
+    );
+
+  const end =
+    xml.indexOf(
+      "</w:tr>",
+      marker,
+    ) +
+    "</w:tr>".length;
+
+  if (
+    start === -1 ||
+    end === -1
+  ) {
+    return null;
+  }
 
   return [start, end];
 }
 
-// inside a row string, find cell by width
-function cellBounds(row, width, from = 0) {
-  const needle = `<w:tcW w:w="${width}"`;
+// ============================================================
+// CELL BOUNDS
+// ============================================================
 
-  const i = row.indexOf(needle, from);
+function cellBounds(
+  row,
+  width,
+  from = 0,
+) {
+  const needle =
+    `<w:tcW w:w="${width}"`;
 
-  if (i === -1) return null;
+  const i = row.indexOf(
+    needle,
+    from,
+  );
 
-  const start = row.lastIndexOf("<w:tc>", i);
-  const end = row.indexOf("</w:tc>", i) + "</w:tc>".length;
+  if (i === -1) {
+    return null;
+  }
+
+  const start =
+    row.lastIndexOf(
+      "<w:tc>",
+      i,
+    );
+
+  const end =
+    row.indexOf(
+      "</w:tc>",
+      i,
+    ) +
+    "</w:tc>".length;
 
   return [start, end];
 }
 
-// add cell padding
+// ============================================================
+// ADD CELL PADDING
+// ============================================================
+
 const addCellPadding = (
   row,
   cellStart,
@@ -363,12 +601,25 @@ const addCellPadding = (
   left = 70,
   right = 70,
 ) => {
-  const cell = row.slice(cellStart, cellEnd);
+  const cell = row.slice(
+    cellStart,
+    cellEnd,
+  );
 
-  const tcPrStart = cell.indexOf("<w:tcPr>");
-  const tcPrEnd = cell.indexOf("</w:tcPr>");
+  const tcPrStart =
+    cell.indexOf(
+      "<w:tcPr>",
+    );
 
-  if (tcPrStart === -1 || tcPrEnd === -1) {
+  const tcPrEnd =
+    cell.indexOf(
+      "</w:tcPr>",
+    );
+
+  if (
+    tcPrStart === -1 ||
+    tcPrEnd === -1
+  ) {
     return row;
   }
 
@@ -381,7 +632,9 @@ const addCellPadding = (
     </w:tcMar>
   `;
 
-  const insertPos = tcPrStart + "<w:tcPr>".length;
+  const insertPos =
+    tcPrStart +
+    "<w:tcPr>".length;
 
   const newCell =
     cell.slice(0, insertPos) +
@@ -395,49 +648,100 @@ const addCellPadding = (
   );
 };
 
-function fillCell(row, width, runsXml, from = 0) {
-  const b = cellBounds(row, width, from);
+// ============================================================
+// FILL CELL
+// ============================================================
 
-  if (!b) return null;
+function fillCell(
+  row,
+  width,
+  runsXml,
+  from = 0,
+) {
+  const b = cellBounds(
+    row,
+    width,
+    from,
+  );
 
-  const pPrEnd = row.indexOf("</w:pPr>", b[0]);
+  if (!b) {
+    return null;
+  }
 
-  if (pPrEnd === -1 || pPrEnd > b[1]) {
+  const pPrEnd =
+    row.indexOf(
+      "</w:pPr>",
+      b[0],
+    );
+
+  if (
+    pPrEnd === -1 ||
+    pPrEnd > b[1]
+  ) {
     return null;
   }
 
   const padding = {
-    1104: { left: 70, right: 70 },
-    3774: { left: 100, right: 100 },
-    654: { left: 70, right: 70 },
-    948: { left: 70, right: 70 },
-    1416: { left: 70, right: 70 },
+    1104: {
+      left: 70,
+      right: 70,
+    },
+
+    3774: {
+      left: 100,
+      right: 100,
+    },
+
+    654: {
+      left: 70,
+      right: 70,
+    },
+
+    948: {
+      left: 70,
+      right: 70,
+    },
+
+    1416: {
+      left: 70,
+      right: 70,
+    },
   };
 
-  const pad = padding[width] || {
-    left: 70,
-    right: 70,
-  };
+  const pad =
+    padding[width] || {
+      left: 70,
+      right: 70,
+    };
 
   const cellStart = b[0];
   const cellEnd = b[1];
 
-  let updatedRow = addCellPadding(
-    row,
-    cellStart,
-    cellEnd,
-    pad.left,
-    pad.right,
-  );
+  let updatedRow =
+    addCellPadding(
+      row,
+      cellStart,
+      cellEnd,
+      pad.left,
+      pad.right,
+    );
 
-  const newBounds = cellBounds(updatedRow, width, from);
+  const newBounds =
+    cellBounds(
+      updatedRow,
+      width,
+      from,
+    );
 
-  if (!newBounds) return null;
+  if (!newBounds) {
+    return null;
+  }
 
-  const newPPrEnd = updatedRow.indexOf(
-    "</w:pPr>",
-    newBounds[0],
-  );
+  const newPPrEnd =
+    updatedRow.indexOf(
+      "</w:pPr>",
+      newBounds[0],
+    );
 
   if (
     newPPrEnd === -1 ||
@@ -447,11 +751,15 @@ function fillCell(row, width, runsXml, from = 0) {
   }
 
   const pos =
-    newPPrEnd + "</w:pPr>".length;
+    newPPrEnd +
+    "</w:pPr>".length;
 
   return {
     row:
-      updatedRow.slice(0, pos) +
+      updatedRow.slice(
+        0,
+        pos,
+      ) +
       runsXml +
       updatedRow.slice(pos),
 
@@ -459,11 +767,22 @@ function fillCell(row, width, runsXml, from = 0) {
   };
 }
 
-// ---------- data preparation ----------
+// ============================================================
+// DATA PREPARATION
+// ============================================================
 
-function buildBillData({ type, party, entry }) {
-  const isService = String(type) === "Service";
-  const amount = round2(entry?.amount || 0);
+function buildBillData({
+  type,
+  party,
+  entry,
+}) {
+  const isService =
+    String(type) ===
+    "Service";
+
+  const amount = round2(
+    entry?.amount || 0,
+  );
 
   const qty =
     Number(entry?.qty) > 0
@@ -473,42 +792,63 @@ function buildBillData({ type, party, entry }) {
   const rate =
     Number(entry?.rate) > 0
       ? round2(entry.rate)
-      : round2(amount / qty);
+      : round2(
+          amount / qty,
+        );
 
-  const invoiceNo = isService
-    ? String(
-        entry?.invoiceNo ||
-          `SR-${String(entry?._id || "")
-            .slice(-8)
-            .toUpperCase()}`,
-      )
-    : String(entry?.invoiceNo || "");
+  const invoiceNo =
+    isService
+      ? String(
+          entry?.invoiceNo ||
+            `SR-${String(
+              entry?._id || "",
+            )
+              .slice(-8)
+              .toUpperCase()}`,
+        )
+      : String(
+          entry?.invoiceNo || "",
+        );
 
-  const particulars = isService
-    ? String(
-        entry?.serviceDetail ||
-          "Service charges",
-      ).trim()
-    : [
-        String(entry?.productName || "").trim(),
-        String(entry?.serialNo || "").trim(),
-      ]
-        .filter(Boolean)
-        .join(" - ");
+  const particulars =
+    isService
+      ? String(
+          entry?.serviceDetail ||
+            "Service charges",
+        ).trim()
+      : [
+          String(
+            entry?.productName ||
+              "",
+          ).trim(),
+
+          String(
+            entry?.serialNo ||
+              "",
+          ).trim(),
+        ]
+          .filter(Boolean)
+          .join(" - ");
 
   const remarks = String(
     entry?.remarks || "",
   ).trim();
 
   const warrantyLine =
-    /warrant/i.test(remarks)
+    /warrant/i.test(
+      remarks,
+    )
       ? remarks
       : "";
 
   return {
     isService,
+
     invoiceNo,
-    date: fmtDate(entry?.date),
+
+    date: fmtDate(
+      entry?.date,
+    ),
 
     // Party Name
     partyName: String(
@@ -525,31 +865,55 @@ function buildBillData({ type, party, entry }) {
     ],
 
     qty: String(qty),
+
     rate: fmtAmt(rate),
+
     amount: fmtAmt(amount),
-    words: amountInWords(amount),
+
+    words: amountInWords(
+      amount,
+    ),
+
     total: fmtAmt(amount),
   };
 }
 
-// ---------- template filling ----------
+// ============================================================
+// TEMPLATE FILLING
+// ============================================================
 
-async function fillTemplate(data) {
+async function fillTemplate(
+  data,
+) {
+  // ----------------------------------------------------------
+  // Read DOCX template
+  // ----------------------------------------------------------
+
   const templateBuffer =
-    fs.readFileSync(TEMPLATE_PATH);
+    fs.readFileSync(
+      TEMPLATE_PATH,
+    );
 
   const zip =
-    await JSZip.loadAsync(templateBuffer);
+    await JSZip.loadAsync(
+      templateBuffer,
+    );
 
   let xml =
     await zip
-      .file("word/document.xml")
+      .file(
+        "word/document.xml",
+      )
       .async("string");
 
-  // ----- 1) Invoice No. -----
+  // ----------------------------------------------------------
+  // 1) Invoice No.
+  // ----------------------------------------------------------
 
   let p =
-    xml.indexOf(">Invoice No</w:t>");
+    xml.indexOf(
+      ">Invoice No</w:t>",
+    );
 
   if (p === -1) {
     throw new Error(
@@ -560,16 +924,26 @@ async function fillTemplate(data) {
   xml = insertAfter(
     xml,
     '<w:t xml:space="preserve">. </w:t></w:r>',
+
     bodyRun(
       data.invoiceNo,
-      fitSize(data.invoiceNo, 12),
+      fitSize(
+        data.invoiceNo,
+        12,
+      ),
     ),
+
     p,
   );
 
-  // ----- 2) Date -----
+  // ----------------------------------------------------------
+  // 2) Date
+  // ----------------------------------------------------------
 
-  p = xml.indexOf(">Date:</w:t>");
+  p =
+    xml.indexOf(
+      ">Date:</w:t>",
+    );
 
   if (p === -1) {
     throw new Error(
@@ -578,7 +952,10 @@ async function fillTemplate(data) {
   }
 
   const dateRunEnd =
-    xml.indexOf("</w:r>", p) +
+    xml.indexOf(
+      "</w:r>",
+      p,
+    ) +
     "</w:r>".length;
 
   const spaceRunEnd =
@@ -589,13 +966,30 @@ async function fillTemplate(data) {
     "</w:r>".length;
 
   xml =
-    xml.slice(0, spaceRunEnd) +
-    bodyRun(data.date, 24) +
-    xml.slice(spaceRunEnd);
+    xml.slice(
+      0,
+      spaceRunEnd,
+    ) +
+    bodyRun(
+      data.date,
+      24,
+    ) +
+    xml.slice(
+      spaceRunEnd,
+    );
 
-  // ----- 3) M/s. — PARTY NAME -----
-  // Party Name ko underline kiya gaya hai.
-  p = xml.indexOf(">M/s.</w:t>");
+  // ----------------------------------------------------------
+  // 3) M/s. — PARTY NAME
+  //
+  // IMPORTANT:
+  // M/s. itself is NOT underlined.
+  // Only data.partyName is underlined.
+  // ----------------------------------------------------------
+
+  p =
+    xml.indexOf(
+      ">M/s.</w:t>",
+    );
 
   if (p === -1) {
     throw new Error(
@@ -605,38 +999,53 @@ async function fillTemplate(data) {
 
   xml = insertAfter(
     xml,
+
     '<w:t xml:space="preserve"> </w:t></w:r>',
 
-    // IMPORTANT:
-    // true = underline
     bodyRun(
       data.partyName,
-      fitSize(data.partyName, 50),
+      fitSize(
+        data.partyName,
+        50,
+      ),
       true,
     ),
 
     p,
   );
 
-  // ----- 4) Address -----
+  // ----------------------------------------------------------
+  // 4) Address
+  // ----------------------------------------------------------
 
   if (data.address) {
-    p = xml.indexOf(">Address</w:t>");
+    p =
+      xml.indexOf(
+        ">Address</w:t>",
+      );
 
     if (p !== -1) {
       xml = insertAfter(
         xml,
+
         '<w:t xml:space="preserve">. </w:t></w:r>',
+
         bodyRun(
           data.address,
-          fitSize(data.address, 55),
+          fitSize(
+            data.address,
+            55,
+          ),
         ),
+
         p,
       );
     }
   }
 
-  // ----- 5) Item row -----
+  // ----------------------------------------------------------
+  // 5) Item row
+  // ----------------------------------------------------------
 
   const ITEM_ROW =
     '<w:trHeight w:val="4638"/>';
@@ -651,7 +1060,9 @@ async function fillTemplate(data) {
         searchFrom,
       );
 
-    if (marker === -1) break;
+    if (marker === -1) {
+      break;
+    }
 
     const trStart =
       xml.lastIndexOf(
@@ -674,7 +1085,10 @@ async function fillTemplate(data) {
 
     let cursor = 0;
 
+    // --------------------------------------------------------
     // Sr. No
+    // --------------------------------------------------------
+
     let nb = fillCell(
       row,
       "1104",
@@ -687,7 +1101,10 @@ async function fillTemplate(data) {
       cursor = nb.from;
     }
 
+    // --------------------------------------------------------
     // Particulars
+    // --------------------------------------------------------
+
     nb = fillCell(
       row,
       "3774",
@@ -702,7 +1119,10 @@ async function fillTemplate(data) {
       cursor = nb.from;
     }
 
+    // --------------------------------------------------------
     // Qty
+    // --------------------------------------------------------
+
     nb = fillCell(
       row,
       "654",
@@ -715,7 +1135,10 @@ async function fillTemplate(data) {
       cursor = nb.from;
     }
 
+    // --------------------------------------------------------
     // Rate
+    // --------------------------------------------------------
+
     nb = fillCell(
       row,
       "948",
@@ -728,7 +1151,10 @@ async function fillTemplate(data) {
       cursor = nb.from;
     }
 
+    // --------------------------------------------------------
     // Amount
+    // --------------------------------------------------------
+
     nb = fillCell(
       row,
       "1416",
@@ -742,14 +1168,18 @@ async function fillTemplate(data) {
     }
 
     xml =
-      xml.slice(0, trStart) +
+      xml.slice(
+        0,
+        trStart,
+      ) +
       row +
       xml.slice(trEnd);
 
     itemCount += 1;
 
     searchFrom =
-      trStart + row.length;
+      trStart +
+      row.length;
   }
 
   if (itemCount === 0) {
@@ -758,7 +1188,9 @@ async function fillTemplate(data) {
     );
   }
 
-  // ----- 6) Rs. in Words + Total row -----
+  // ----------------------------------------------------------
+  // 6) Rs. in Words + Total row
+  // ----------------------------------------------------------
 
   xml = xml
     .split(
@@ -772,6 +1204,7 @@ async function fillTemplate(data) {
     '<w:trHeight w:val="497" w:hRule="atLeast"/>';
 
   searchFrom = 0;
+
   let wordsCount = 0;
 
   while (true) {
@@ -781,7 +1214,9 @@ async function fillTemplate(data) {
         searchFrom,
       );
 
-    if (marker === -1) break;
+    if (marker === -1) {
+      break;
+    }
 
     const trStart =
       xml.lastIndexOf(
@@ -802,7 +1237,10 @@ async function fillTemplate(data) {
         trEnd,
       );
 
+    // --------------------------------------------------------
     // Words value
+    // --------------------------------------------------------
+
     const label =
       ">Words:</w:t></w:r>";
 
@@ -814,16 +1252,26 @@ async function fillTemplate(data) {
         li + label.length;
 
       row =
-        row.slice(0, pos) +
-        wordsRun(data.words) +
+        row.slice(
+          0,
+          pos,
+        ) +
+        wordsRun(
+          data.words,
+        ) +
         row.slice(pos);
     }
 
+    // --------------------------------------------------------
     // Total amount
+    // --------------------------------------------------------
+
     const nb = fillCell(
       row,
       "1416",
-      cellRun(data.total),
+      cellRun(
+        data.total,
+      ),
       0,
     );
 
@@ -832,14 +1280,18 @@ async function fillTemplate(data) {
     }
 
     xml =
-      xml.slice(0, trStart) +
+      xml.slice(
+        0,
+        trStart,
+      ) +
       row +
       xml.slice(trEnd);
 
     wordsCount += 1;
 
     searchFrom =
-      trStart + row.length;
+      trStart +
+      row.length;
   }
 
   if (wordsCount === 0) {
@@ -848,6 +1300,10 @@ async function fillTemplate(data) {
     );
   }
 
+  // ----------------------------------------------------------
+  // Save modified XML back to DOCX
+  // ----------------------------------------------------------
+
   zip.file(
     "word/document.xml",
     xml,
@@ -855,16 +1311,21 @@ async function fillTemplate(data) {
 
   return zip.generateAsync({
     type: "nodebuffer",
+
     compression: "DEFLATE",
+
     compressionOptions: {
       level: 6,
     },
+
     mimeType:
       "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
   });
 }
 
-// ---------- public API ----------
+// ============================================================
+// PUBLIC API
+// ============================================================
 
 async function generateBillDocx({
   type,
@@ -881,56 +1342,41 @@ async function generateBillDocx({
   const buffer =
     await fillTemplate(data);
 
-  const fileBase = data.isService
-    ? `Service-Receipt-${
-        data.invoiceNo || "SL"
-      }`.replace(
-        /[^\w.-]+/g,
-        "-",
-      )
-    : `Invoice-${
-        data.invoiceNo ||
-        String(entry?._id || "").slice(-8)
-      }`.replace(
-        /[^\w.-]+/g,
-        "-",
-      );
+  const fileBase =
+    data.isService
+      ? `Service-Receipt-${
+          data.invoiceNo ||
+          "SL"
+        }`.replace(
+          /[^\w.-]+/g,
+          "-",
+        )
+      : `Invoice-${
+          data.invoiceNo ||
+          String(
+            entry?._id || "",
+          ).slice(-8)
+        }`.replace(
+          /[^\w.-]+/g,
+          "-",
+        );
 
   return {
     buffer,
-    fileName: `${fileBase}.docx`,
+
+    fileName:
+      `${fileBase}.docx`,
+
     data,
   };
 }
+
+// ============================================================
+// EXPORTS
+// ============================================================
 
 module.exports = {
   generateBillDocx,
   buildBillData,
   amountInWords,
 };
-```
-
-**Change exactly ye hai:**
-
-```js
-bodyRun(
-  data.partyName,
-  fitSize(data.partyName, 50),
-  true,
-)
-```
-
-aur `bodyRun()` me:
-
-```js
-underline ? '<w:u w:val="single"/>' : ""
-```
-
-add hua hai.
-
-Isse output roughly aisa hoga:
-
-**M/s. ABC Enterprises**
-━━━━━━━━━━━━━━━━
-
-Sirf **ABC Enterprises** underline hoga, `M/s.` nahi.
