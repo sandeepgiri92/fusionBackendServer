@@ -74,14 +74,42 @@ const createEntry = async (req, res) => {
     base.qty = qty;
     base.rate = rate;
 
+    /* ========================================================
+       SERVICE
+    ======================================================== */
+
     if (type === "Service") {
       base.serviceDetail = String(entryData.serviceDetail || "").trim();
     } else {
+      /* ========================================================
+       SALE / PURCHASE
+    ======================================================== */
       Object.assign(base, {
         productName: String(entryData.productName || "").trim(),
+
         serialNo: String(entryData.serialNo || "").trim(),
       });
+
+      /* ------------------------------------------------------
+         PURCHASE INVOICE
+         Purchase invoice number is entered manually
+      ------------------------------------------------------ */
+
+      if (type === "Purchase") {
+        base.invoiceNo = String(entryData.invoiceNo || "").trim();
+
+        if (!base.invoiceNo) {
+          return res.status(400).json({
+            success: false,
+            message: "Invoice number is required for Purchase",
+          });
+        }
+      }
     }
+
+    /* ========================================================
+       VALIDATION
+    ======================================================== */
 
     if (type === "Service" && !base.serviceDetail) {
       return res.status(400).json({
@@ -97,14 +125,22 @@ const createEntry = async (req, res) => {
       });
     }
 
-    /*
-     * Invoice numbers are generated automatically for Sale and Service.
-     * A single atomic counter is shared between both collections.
-     */
+    /* ========================================================
+       AUTO INVOICE FOR SALE + SERVICE
+
+       Purchase invoice is NOT auto generated.
+    ======================================================== */
+
     if (type === "Sale" || type === "Service") {
       const counter = await InvoiceCounter.findOneAndUpdate(
-        { key: "SALE_SERVICE" },
-        { $inc: { seq: 1 } },
+        {
+          key: "SALE_SERVICE",
+        },
+        {
+          $inc: {
+            seq: 1,
+          },
+        },
         {
           new: true,
           upsert: true,
@@ -114,6 +150,10 @@ const createEntry = async (req, res) => {
 
       base.invoiceNo = `INV-${String(counter.seq).padStart(6, "0")}`;
     }
+
+    /* ========================================================
+       SALE SERIAL DUPLICATE CHECK
+    ======================================================== */
 
     if (type === "Sale") {
       const duplicateSerial = await Model.findOne({
@@ -129,7 +169,15 @@ const createEntry = async (req, res) => {
       }
     }
 
+    /* ========================================================
+       CREATE ENTRY
+    ======================================================== */
+
     const entry = await Model.create(base);
+
+    /* ========================================================
+       INITIAL PAYMENT
+    ======================================================== */
 
     const initialPaid = Math.min(
       Math.max(Number(entryData.initialPayment || 0), 0),
@@ -141,11 +189,17 @@ const createEntry = async (req, res) => {
         ? [
             {
               amount: initialPaid,
+
               paymentDate: normalizeDate(entryData.initialPaymentDate) || date,
+
               remarks: String(entryData.initialPaymentRemarks || "").trim(),
             },
           ]
         : [];
+
+    /* ========================================================
+       CREATE TRANSACTION
+    ======================================================== */
 
     const tx = await Transaction.create({
       partyId,
@@ -246,6 +300,7 @@ const getEntries = async (req, res) => {
       refId: {
         $in: ids,
       },
+
       type: Model.modelName,
     }).lean();
 
@@ -265,10 +320,15 @@ const getEntries = async (req, res) => {
 
       return {
         ...e,
+
         paymentStatus: status,
+
         totalPaid: legacyPaid,
+
         remainingAmount: Math.max(Number(e.amount) - legacyPaid, 0),
+
         payments: tx?.payments || [],
+
         transactionId: tx?._id || null,
       };
     });
@@ -277,13 +337,17 @@ const getEntries = async (req, res) => {
 
     return res.json({
       success: true,
+
       data,
+
       pagination: {
         currentPage,
         limit,
         totalData,
         totalPages,
+
         hasNextPage: currentPage < totalPages,
+
         hasPreviousPage: currentPage > 1,
       },
     });
@@ -304,6 +368,7 @@ const getEntries = async (req, res) => {
 const updateEntry = async (req, res) => {
   try {
     const Model = resolveModel(req.params.type);
+
     const id = req.params.id;
 
     if (
@@ -347,20 +412,55 @@ const updateEntry = async (req, res) => {
 
     if (Model.modelName === "Service") {
       update.serviceDetail = String(d.serviceDetail || "").trim();
+
+      if (!update.serviceDetail) {
+        return res.status(400).json({
+          success: false,
+          message: "Service detail is required",
+        });
+      }
     } else {
       Object.assign(update, {
         productName: String(d.productName || "").trim(),
 
         serialNo: String(d.serialNo || "").trim(),
       });
+
+      if (!update.productName || !update.serialNo) {
+        return res.status(400).json({
+          success: false,
+          message: "Product and serial number are required",
+        });
+      }
+
+      /* ------------------------------------------------------
+         PURCHASE INVOICE UPDATE
+      ------------------------------------------------------ */
+
+      if (Model.modelName === "Purchase") {
+        update.invoiceNo = String(d.invoiceNo || "").trim();
+
+        if (!update.invoiceNo) {
+          return res.status(400).json({
+            success: false,
+            message: "Invoice number is required for Purchase",
+          });
+        }
+      }
     }
+
+    /* ========================================================
+       SALE SERIAL DUPLICATE CHECK
+    ======================================================== */
 
     if (Model.modelName === "Sale") {
       const duplicate = await Model.findOne({
         partyId: req.body.partyId,
+
         _id: {
           $ne: id,
         },
+
         serialNo: update.serialNo,
       });
 
@@ -372,12 +472,18 @@ const updateEntry = async (req, res) => {
       }
     }
 
+    /* ========================================================
+       UPDATE ENTRY
+    ======================================================== */
+
     const entry = await Model.findOneAndUpdate(
       {
         _id: id,
         partyId: req.body.partyId,
       },
+
       update,
+
       {
         new: true,
         runValidators: true,
@@ -390,6 +496,10 @@ const updateEntry = async (req, res) => {
         message: "Entry not found",
       });
     }
+
+    /* ========================================================
+       UPDATE TRANSACTION
+    ======================================================== */
 
     const tx = await Transaction.findOne({
       refId: id,
@@ -407,6 +517,7 @@ const updateEntry = async (req, res) => {
       }
 
       tx.amount = amount;
+
       tx.paymentStatus = getStatus(amount, paid);
 
       await tx.save();
@@ -434,6 +545,7 @@ const updateEntry = async (req, res) => {
 const deleteEntry = async (req, res) => {
   try {
     const Model = resolveModel(req.params.type);
+
     const id = req.params.id;
 
     if (!Model || !mongoose.isValidObjectId(id)) {
@@ -512,7 +624,9 @@ const addTransactionPayment = async (req, res) => {
 
     tx.payments.push({
       amount,
+
       paymentDate,
+
       remarks: String(req.body.remarks || "").trim(),
     });
 
@@ -525,9 +639,12 @@ const addTransactionPayment = async (req, res) => {
     return res.status(201).json({
       success: true,
       message: "Payment added",
+
       data: {
         ...tx.toObject(),
+
         totalPaid: nextPaid,
+
         remainingAmount: tx.amount - nextPaid,
       },
     });
@@ -613,6 +730,7 @@ const getAllTransaction = async (req, res) => {
               $options: "i",
             },
           },
+
           {
             contactNo: {
               $regex: search.trim(),
@@ -631,6 +749,7 @@ const getAllTransaction = async (req, res) => {
 
     if (dateRange) {
       const now = new Date();
+
       const start = new Date(now);
 
       if (dateRange === "today") {
@@ -684,7 +803,9 @@ const getAllTransaction = async (req, res) => {
       const due = Math.max(Number(t.amount) - paid, 0);
 
       totalAmount += Number(t.amount);
+
       totalPaidAmount += paid;
+
       totalDueAmount += due;
     });
 
@@ -699,15 +820,25 @@ const getAllTransaction = async (req, res) => {
 
       return {
         id: t._id,
+
         transactionId: t._id,
+
         paymentDate: t.createdAt,
+
         type: t.type,
+
         partyId: t.partyId?._id,
+
         partyName: t.partyId?.name || "Unknown",
+
         amount: t.amount,
+
         totalPaid: paid,
+
         remainingAmount: due,
+
         status: getStatus(t.amount, paid),
+
         payments: t.payments || [],
       };
     });
@@ -716,21 +847,30 @@ const getAllTransaction = async (req, res) => {
 
     return res.json({
       success: true,
+
       data,
 
       summary: {
         totalPaidAmount,
+
         totalDueAmount,
+
         totalAmount,
+
         transactionCount: allMatching.length,
       },
 
       pagination: {
         page: currentPage,
+
         limit,
+
         total,
+
         totalPages,
+
         hasNextPage: currentPage < totalPages,
+
         hasPreviousPage: currentPage > 1,
       },
     });
@@ -751,6 +891,7 @@ const getAllTransaction = async (req, res) => {
 const updateTransaction = async (req, res) => {
   return res.status(400).json({
     success: false,
+
     message:
       "Payment status is calculated from payment records. Add or remove a payment instead.",
   });
@@ -766,13 +907,17 @@ const loadBillData = async (req) => {
   const id = req.params.id;
 
   if (!Model || !mongoose.isValidObjectId(id)) {
-    throw Object.assign(new Error("Invalid request"), { status: 400 });
+    throw Object.assign(new Error("Invalid request"), {
+      status: 400,
+    });
   }
 
   const entry = await Model.findById(id).lean();
 
   if (!entry) {
-    throw Object.assign(new Error("Entry not found"), { status: 404 });
+    throw Object.assign(new Error("Entry not found"), {
+      status: 404,
+    });
   }
 
   const party = await Party.findById(entry.partyId)
@@ -788,7 +933,6 @@ const loadBillData = async (req) => {
 
 /* ============================================================
    WORD BILL
-   Existing DOCX generator remains unchanged
 ============================================================ */
 
 const getBillDocx = async (req, res) => {
@@ -816,6 +960,7 @@ const getBillDocx = async (req, res) => {
 
     return res.status(e.status || 500).json({
       success: false,
+
       message: e.status ? e.message : "Unable to generate bill",
     });
   }
@@ -823,11 +968,6 @@ const getBillDocx = async (req, res) => {
 
 /* ============================================================
    PDF BILL
-   DOCX -> LibreOffice -> PDF
-
-   IMPORTANT:
-   This uses the SAME generateBillDocx()
-   so PDF design matches Word bill.
 ============================================================ */
 
 const getBillPdf = async (req, res) => {
@@ -852,6 +992,7 @@ const getBillPdf = async (req, res) => {
 
     return res.status(e.status || 500).json({
       success: false,
+
       message: e.status ? e.message : "Unable to generate PDF bill",
     });
   }
